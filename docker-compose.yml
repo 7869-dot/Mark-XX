@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: axolot
+      POSTGRES_PASSWORD: axolot
+      POSTGRES_DB: axolot
+    ports:
+      - "5432:5432"
+    volumes:
+      - axolot_pg:/var/lib/postgresql/data
+
+volumes:
+  axolot_pg:

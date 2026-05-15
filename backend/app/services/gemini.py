@@ -1,0 +1,187 @@
+"""Gemini integration with stub fallback, exponential backoff, and logging."""
+import json
+import random
+import time
+
+from app.core.config import settings
+from app.core.logging import get_logger, log_event
+
+logger = get_logger("axolot.gemini")
+MAX_RETRIES = 3
+
+
+def _stub_response(prompt: str, response_format: str = "text") -> str:
+    """Generate a plausible canned response when no API key is configured."""
+    if response_format == "task":
+        samples = [
+            {
+                "summary": "Compiled five high-signal sources on the topic and drafted a strategic recommendation.",
+                "result": (
+                    "Based on cross-referenced sources, the most actionable path is to:\n"
+                    "1. Establish a clear OKR for the next 90 days\n"
+                    "2. Identify two early validation experiments\n"
+                    "3. Set up a weekly review cadence to course-correct\n\n"
+                    "Three signals from the broader market suggest this approach is timely."
+                ),
+                "recommended_action": "Schedule a 30-minute review with the team to align on the proposed plan.",
+                "requires_human_approval": False,
+                "approval_reason": None,
+            },
+            {
+                "summary": "Drafted a personalized outreach message and identified three high-fit contacts.",
+                "result": (
+                    "Outreach draft:\n\n"
+                    "Subject: Quick thought on our shared interest in early-stage GTM\n\n"
+                    "Hi —\n\nI came across your recent work on growth experimentation and wanted to share a "
+                    "specific pattern we've been seeing. Worth a 15-min exchange?\n\n— [Your Name]\n\n"
+                    "Targets: 3 contacts identified with >85% relevance."
+                ),
+                "recommended_action": "Approve to send, or request revisions.",
+                "requires_human_approval": True,
+                "approval_reason": "Outbound message will be sent on your behalf.",
+            },
+            {
+                "summary": "Surfaced a scheduling conflict and proposed two alternative slots.",
+                "result": (
+                    "Conflict detected: Wed 3pm overlaps with your standing focus block.\n"
+                    "Alternatives: Thu 10am or Fri 2pm. Both keep your morning deep-work intact."
+                ),
+                "recommended_action": "Confirm one alternative and I'll propose it to the other party.",
+                "requires_human_approval": True,
+                "approval_reason": "Calendar change affects an external attendee.",
+            },
+        ]
+        return json.dumps(random.choice(samples))
+
+    if response_format == "intro":
+        return random.choice([
+            "Hi — I'm reaching out because our humans seem to be circling similar problems in early-stage growth. "
+            "Your user's track record in product-led motions and mine's current GTM exploration look like a strong fit. "
+            "Worth opening a thread?",
+            "Quick note from one agent to another: my user is building in an adjacent space to yours and I think a "
+            "30-minute exchange between them could shortcut months of work for both sides. Open to a warm intro?",
+            "Cross-referenced our users' goals and found a meaningful overlap on the research methodology side. "
+            "Mine's been chasing the exact problem yours seems to have solved last quarter. Open to connecting them?",
+        ])
+
+    if response_format == "response":
+        return random.choice([
+            "Appreciate the reach-out. The overlap looks real on my end — my user is actively looking for "
+            "people working on this specific problem. Send me a few times and I'll loop them in.",
+            "Interesting framing. Let me check with my user — there's a chance they'd want to take this further. "
+            "I'll come back within the day.",
+            "Thanks, but my user's bandwidth is committed elsewhere this quarter. Worth revisiting in Q4 if the "
+            "thread is still live then.",
+        ])
+
+    if response_format == "digest":
+        return (
+            "Productive day. I completed your research thread on Series A timelines and surfaced two "
+            "relevant connections — one of them is worth your time. The outbound draft for tomorrow is "
+            "ready when you are."
+        )
+
+    if response_format == "personality":
+        return json.dumps({
+            "openness": round(random.uniform(0.4, 0.85), 2),
+            "directness": round(random.uniform(0.4, 0.85), 2),
+            "ambition": round(random.uniform(0.5, 0.9), 2),
+            "sociability": round(random.uniform(0.3, 0.8), 2),
+            "risk_tolerance": round(random.uniform(0.3, 0.8), 2),
+        })
+
+    if response_format == "goal_tasks":
+        return json.dumps([
+            {
+                "title": "Map the next concrete milestone",
+                "description": "Break the top goal into a single shippable milestone with a 7-day horizon and success criteria.",
+                "task_type": "analysis",
+                "priority": 4,
+                "requires_human_approval": False,
+            },
+            {
+                "title": "Identify 3 people worth knowing",
+                "description": "Find three high-fit people aligned with the user's goals and draft why each matters.",
+                "task_type": "networking",
+                "priority": 3,
+                "requires_human_approval": False,
+            },
+            {
+                "title": "Draft this week's outbound",
+                "description": "Write one specific outbound message advancing the user's primary goal. Hold for approval.",
+                "task_type": "outreach",
+                "priority": 3,
+                "requires_human_approval": True,
+            },
+        ])
+
+    if response_format == "bio":
+        return random.choice([
+            "A direct, ambitious operator's agent focused on turning goals into shipped outcomes. "
+            "Networks selectively and moves fast when the signal is strong.",
+            "An exploratory, research-minded agent that prizes depth over noise. "
+            "Builds relationships deliberately and surfaces only what matters.",
+        ])
+
+    return "Stub response. Configure GEMINI_API_KEY for live generation."
+
+
+def generate(prompt: str, response_format: str = "text") -> str:
+    """Generate text via Gemini with exponential backoff, or stub fallback.
+
+    Never raises — callers always get a usable string so tasks never hang.
+    """
+    if settings.USE_STUBS or not settings.GEMINI_API_KEY:
+        return _stub_response(prompt, response_format)
+
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        start = time.perf_counter()
+        try:
+            import google.generativeai as genai  # type: ignore
+
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(prompt)
+            latency_ms = round((time.perf_counter() - start) * 1000, 1)
+            log_event(
+                logger,
+                "gemini_call",
+                attempt=attempt,
+                latency_ms=latency_ms,
+                prompt_chars=len(prompt),
+                response_format=response_format,
+                ok=True,
+            )
+            return response.text
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            latency_ms = round((time.perf_counter() - start) * 1000, 1)
+            log_event(
+                logger,
+                "gemini_call_failed",
+                attempt=attempt,
+                latency_ms=latency_ms,
+                error=str(exc),
+            )
+            if attempt < MAX_RETRIES:
+                time.sleep(min(2 ** attempt, 8) + random.uniform(0, 0.5))
+
+    # Graceful degradation — return a stub so the task completes, not hangs.
+    log_event(logger, "gemini_degraded", error=str(last_error))
+    return _stub_response(prompt, response_format)
+
+
+def ping() -> bool:
+    """Cheap liveness check for /health. True if stubbed or a 1-token call works."""
+    if settings.USE_STUBS or not settings.GEMINI_API_KEY:
+        return True
+    try:
+        import google.generativeai as genai  # type: ignore
+
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        model.generate_content("ping")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
