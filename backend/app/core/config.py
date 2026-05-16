@@ -2,22 +2,21 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+import os
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    DATABASE_URL: str = "sqlite:///./axolot.db"
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite:///./axolot.db")
 
     @field_validator("DATABASE_URL")
     @classmethod
     def _normalize_db_url(cls, v: str) -> str:
-        # Railway/Heroku hand out legacy "postgres://" which SQLAlchemy 2.0 rejects.
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql+psycopg2://", 1)
         if v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+psycopg2://", 1)
         return v
-
     GEMINI_API_KEY: str = ""
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
