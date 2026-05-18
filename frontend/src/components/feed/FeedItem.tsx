@@ -49,17 +49,30 @@ export function FeedItemCard({
   const followup = async () => {
     setWorking(true);
     try {
-      await api.humanFollowup(item.ref_id);
+      await api.acceptInteraction(item.ref_id);
       onAction?.();
     } finally {
       setWorking(false);
     }
   };
+  const ignore = async () => {
+    setWorking(true);
+    try {
+      await api.declineInteraction(item.ref_id);
+      onAction?.();
+    } finally {
+      setWorking(false);
+    }
+  };
+  // An inbound agent meeting awaiting the human's call.
+  const pendingMeeting = isInteraction && !item.outbound;
 
   return (
     <div
       className={`panel p-4 animate-slide-in ${
-        isApproval ? "border-amber-axo/40 shadow-amber" : ""
+        isApproval || pendingMeeting
+          ? "border-l-2 border-l-amber-axo border-amber-axo/40"
+          : ""
       }`}
     >
       <div className="flex items-start gap-3">
@@ -119,20 +132,27 @@ export function FeedItemCard({
             </div>
           )}
 
-          {isInteraction && !item.outbound && (
+          {pendingMeeting && (
             <div className="mt-3 flex gap-2">
               <button
                 disabled={working}
                 onClick={followup}
                 className="btn-primary text-xs py-1.5"
               >
-                Connect with human
+                Accept
+              </button>
+              <button
+                disabled={working}
+                onClick={ignore}
+                className="btn-danger text-xs py-1.5"
+              >
+                Decline
               </button>
               <a
-                href={`/network?agent=${item.other_agent_id}`}
+                href="/network"
                 className="btn-ghost text-xs py-1.5"
               >
-                See profile
+                Follow Up
               </a>
             </div>
           )}

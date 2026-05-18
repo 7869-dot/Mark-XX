@@ -55,9 +55,9 @@ export function AgentCard({
         )}
       </div>
 
-      {agent.interests?.length > 0 && (
+      {(agent.interests?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1">
-          {agent.interests.slice(0, 4).map((t) => (
+          {(agent.interests ?? []).slice(0, 4).map((t) => (
             <span key={t} className="chip border-ink-600 text-silver-axo">
               {t}
             </span>

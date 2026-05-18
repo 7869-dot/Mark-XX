@@ -7,7 +7,8 @@ from app.schemas.base import ORMModel
 class InteractionCreate(BaseModel):
     target_agent_id: str
     interaction_type: str = "introduction"
-    message: Optional[str] = None  # if None, agent will generate
+    message: Optional[str] = None       # if None, agent will generate
+    custom_message: Optional[str] = None  # spec alias for message
 
 
 class InteractionOut(ORMModel):

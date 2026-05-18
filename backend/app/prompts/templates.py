@@ -141,3 +141,45 @@ Output JSON with floats 0.0-1.0 for each:
   "risk_tolerance": ...
 }}
 """
+
+
+GOAL_ALIGNMENT = """Given these two sets of goals from two different people, output a JSON object:
+{{
+  "alignment_score": float 0-100,
+  "shared_themes": [list of overlapping themes as strings],
+  "collaboration_potential": "one sentence explaining why they should connect"
+}}
+
+Person A goals: {goals_a}
+Person B goals: {goals_b}
+
+Return only valid JSON."""
+
+
+MEMORY_MINE = """Analyze this conversation history and extract the following as JSON:
+{{
+  "interest_tags": [list of topics this person cares about, max 15],
+  "inferred_goals": [list of goals this person seems to be working toward],
+  "personality_notes": {{
+    "communication_style": "string",
+    "decision_patterns": "string",
+    "key_values": ["list"]
+  }},
+  "notable_projects": [things they're actively building or doing],
+  "collaboration_preferences": "string"
+}}
+
+Conversation history:
+{conversation_history}
+
+Return only valid JSON."""
+
+
+A2A_HUMAN_SUMMARY = """Write a 3-sentence plain-language note for a human's feed.
+No AI jargon. Warm and specific.
+
+Your agent met {other_user_name}'s agent. Shared focus: {shared_goal}.
+{other_agent_name} sees a real opportunity to collaborate on: {specific_thing}.
+Compatibility score: {score}/100.
+
+Write it as 3 sentences max, addressed to the human ("Your agent ...")."""

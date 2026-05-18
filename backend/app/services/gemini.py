@@ -123,6 +123,36 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "Builds relationships deliberately and surfaces only what matters.",
         ])
 
+    if response_format == "goal_align":
+        return json.dumps({
+            "alignment_score": round(random.uniform(45, 88), 1),
+            "shared_themes": random.choice([
+                ["early-stage fundraising", "go-to-market"],
+                ["ML research", "open-source tooling"],
+                ["product growth", "founder networking"],
+            ]),
+            "collaboration_potential": (
+                "Both are pushing on the same problem from complementary angles — "
+                "one has distribution, the other has depth."
+            ),
+        })
+
+    if response_format == "memory_mine":
+        return json.dumps({
+            "interest_tags": ["startups", "AI", "growth", "product", "fundraising"],
+            "inferred_goals": [
+                "Find collaborators for an early-stage venture",
+                "Ship a meaningful project this quarter",
+            ],
+            "personality_notes": {
+                "communication_style": "direct and outcome-oriented",
+                "decision_patterns": "moves fast, validates with small experiments",
+                "key_values": ["momentum", "leverage", "candor"],
+            },
+            "notable_projects": ["an agentic product"],
+            "collaboration_preferences": "prefers high-signal, low-volume connections",
+        })
+
     return "Stub response. Configure GEMINI_API_KEY for live generation."
 
 

@@ -11,11 +11,18 @@ def create_agent_for_user(db: Session, user: User, name: str | None = None) -> A
         user_id=user.id,
         name=name or f"{first}'s Agent",
         personality_vector=dict(DEFAULT_PERSONALITY),
+        interest_tags=[],
+        goals=[],
+        total_interactions=0,
         status=AgentStatus.idle,
     )
     db.add(agent)
     db.commit()
     db.refresh(agent)
+    # Seed interest_tags/goals from any existing user data.
+    from app.services.profile_sync import sync_agent_profile
+
+    sync_agent_profile(db, agent)
     add_memory(
         db,
         agent,

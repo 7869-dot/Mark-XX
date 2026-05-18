@@ -30,6 +30,18 @@ scheduler = BackgroundScheduler(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # One-time idempotent cut-over of legacy social_graph -> agent_connections.
+    from app.core.db import SessionLocal
+    from app.services.profile_sync import migrate_social_graph_to_connections
+
+    _db = SessionLocal()
+    try:
+        migrate_social_graph_to_connections(_db)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "social_graph_migration_failed", error=str(exc))
+    finally:
+        _db.close()
+
     register_jobs(scheduler)
     scheduler.start()
     log_event(logger, "startup", jobs=[j.id for j in scheduler.get_jobs()])

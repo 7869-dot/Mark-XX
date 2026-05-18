@@ -2,8 +2,11 @@ import type {
   Agent,
   AgentStats,
   ApiResponse,
+  Connection,
+  Discovery,
   FeedItem,
   Interaction,
+  NetworkStats,
   PublicAgentProfile,
   Task,
 } from "@/types";
@@ -55,15 +58,20 @@ async function request<T>(
     }));
 
   if (!res.ok || !json.success) {
-    const msg = json.message || json.error || `Request failed: ${res.status}`;
+    // New routes use error:{code,message}; legacy routes use error:string + message.
+    const errAny = json.error as unknown;
+    const structured =
+      errAny && typeof errAny === "object"
+        ? (errAny as { message?: string }).message
+        : undefined;
+    const msg =
+      structured ||
+      json.message ||
+      (typeof errAny === "string" ? errAny : "") ||
+      `Request failed: ${res.status}`;
     // 401 during the auth bootstrap is expected — don't shout about it.
     if (!silent && res.status !== 401) {
-      pushToast(
-        res.status === 429
-          ? msg
-          : `${msg}`,
-        "error"
-      );
+      pushToast(msg, "error");
     }
     throw new Error(msg);
   }
@@ -117,21 +125,48 @@ export const api = {
 
   // network
   discover: (limit = 10) =>
-    request<PublicAgentProfile[]>(`/agents/discover?limit=${limit}`),
-  connections: () => request<PublicAgentProfile[]>("/agents/connections"),
+    request<Discovery[]>(`/agents/discover?limit=${limit}`),
+  connections: (connectionType?: string) =>
+    request<Connection[]>(
+      "/agents/connections" +
+        (connectionType ? `?connection_type=${connectionType}` : "")
+    ),
   interact: (payload: {
     target_agent_id: string;
     interaction_type?: string;
-    message?: string;
-  }) => request<Interaction>("/agents/interact", { method: "POST", body: JSON.stringify(payload) }),
-  interactions: () => request<Interaction[]>("/agents/interactions"),
+    custom_message?: string;
+  }) =>
+    request<Interaction & { compatibility_breakdown?: unknown }>(
+      "/agents/interact",
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  interactions: (status?: string) =>
+    request<Interaction[]>(
+      "/agents/interactions" + (status ? `?status=${status}` : "")
+    ),
+  interactionsFeed: (offset = 0, limit = 20) =>
+    request<{ items: Interaction[]; next_offset: number }>(
+      `/agents/interactions/feed?limit=${limit}&offset=${offset}`
+    ),
+  acceptInteraction: (id: string) =>
+    request<{ status: string; interaction_id: string }>(
+      `/agents/interactions/${id}/accept`,
+      { method: "POST" }
+    ),
+  declineInteraction: (id: string) =>
+    request<{ status: string; interaction_id: string }>(
+      `/agents/interactions/${id}/decline`,
+      { method: "POST" }
+    ),
   publicProfile: (id: string) =>
     request<PublicAgentProfile>(`/agents/${id}/profile`),
   humanFollowup: (id: string) =>
-    request<{ ok: boolean; connected_to: string }>(
-      `/agents/interactions/${id}/human-followup`,
-      { method: "POST" }
-    ),
+    request<{
+      ok: boolean;
+      other_user_name: string | null;
+      other_user_email: string | null;
+    }>(`/agents/interactions/${id}/human-followup`, { method: "POST" }),
+  networkStats: () => request<NetworkStats>("/network/stats"),
 
   // memory
   memoryTimeline: () =>

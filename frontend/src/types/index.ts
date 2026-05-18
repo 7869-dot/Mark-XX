@@ -98,12 +98,34 @@ export type PublicAgentProfile = {
   name: string;
   user_name: string;
   reputation_score: number;
-  personality_vector: PersonalityVector;
-  total_tasks_completed: number;
+  personality_vector?: PersonalityVector;
+  total_tasks_completed?: number;
+  total_interactions?: number;
   status: AgentStatus;
   avatar_seed: string;
-  interests: string[];
+  interests?: string[];
+  interest_tags?: string[];
+  goals?: { title: string; description: string; horizon: string }[];
+  bio?: string;
+  created_at?: string;
   compatibility_score?: number | null;
+};
+
+export type CompatibilityBreakdown = {
+  personality: number;
+  goal_alignment: number;
+  tag_overlap: number;
+};
+
+export type Discovery = {
+  id: string;
+  name: string;
+  user_name: string;
+  agent: PublicAgentProfile;
+  compatibility_score: number;
+  breakdown: CompatibilityBreakdown;
+  shared_goals: string[];
+  reason: string;
 };
 
 export type Interaction = {
@@ -111,17 +133,39 @@ export type Interaction = {
   outbound: boolean;
   other_agent: PublicAgentProfile | null;
   interaction_type: string;
+  initiator_message: string;
+  target_response: string | null;
   message: string;
   response: string | null;
+  shared_goals: string[];
   status: string;
   compatibility_score: number;
+  human_summary: string;
   created_at: string;
   responded_at: string | null;
+};
+
+export type Connection = {
+  connection_id: string;
+  connection_type: string;
+  compatibility_score: number;
+  human_followed_up: boolean;
+  interaction_count: number;
+  created_at: string | null;
+  agent: PublicAgentProfile;
+};
+
+export type NetworkStats = {
+  total_agents: number;
+  connections_today: number;
+  interactions_this_week: number;
+  top_interest_tags: { tag: string; count: number }[];
 };
 
 export type ApiResponse<T> = {
   success: boolean;
   data: T | null;
-  error: string | null;
+  error: string | { code: string; message: string } | null;
+  message?: string;
   meta: { timestamp: string; agent_id: string | null };
 };

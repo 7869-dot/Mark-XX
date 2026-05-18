@@ -34,11 +34,18 @@ class Agent(Base):
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
     personality_vector = Column(JSON, default=lambda: dict(DEFAULT_PERSONALITY))
+    # interest_tags: ["AI","startups",...]  — synced from user_personalities.interests
+    interest_tags = Column(JSON, default=list)
+    # goals: [{title, description, horizon: week|month|year}] — synced from users.goals
+    goals = Column(JSON, default=list)
     reputation_score = Column(Float, default=50.0)
+    # social_graph kept additively for back-compat; connections are now the
+    # source of truth in the agent_connections table (cut over fully).
     social_graph = Column(JSON, default=list)
     status = Column(Enum(AgentStatus), default=AgentStatus.idle)
     current_task = Column(Text, nullable=True)
     total_tasks_completed = Column(Integer, default=0)
+    total_interactions = Column(Integer, default=0)
     avatar_seed = Column(String, default=_uuid)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
@@ -46,6 +53,16 @@ class Agent(Base):
     user = relationship("User", back_populates="agent")
     memories = relationship("AgentMemory", back_populates="agent", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="agent", cascade="all, delete-orphan")
+
+    @property
+    def goal_titles(self) -> list:
+        out = []
+        for g in self.goals or []:
+            if isinstance(g, dict):
+                out.append(g.get("title") or g.get("description") or "")
+            else:
+                out.append(str(g))
+        return [g for g in out if g]
 
 
 class AgentMemoryType(str, enum.Enum):

@@ -123,50 +123,69 @@ def goal_check():
 
 
 def network_scan():
-    """Every 6h — initiate at most one A2A intro per agent/day, never re-contact within 7d."""
+    """Every 6h per agent — discover top-5 candidates, auto-introduce to #1 (score>60).
+
+    Rules: exclude already-connected, exclude discovered in last 7d, exclude same
+    user. Max 1 auto-introduction per agent per day. Log all 5 to discovery log.
+    """
 
     def _do():
+        from app.services.compatibility import compute_compatibility
+        from app.services.a2a_engine import (
+            already_connected,
+            recently_discovered,
+            log_discovery,
+            run_interaction,
+        )
+
         db = SessionLocal()
         try:
             day_ago = datetime.utcnow() - timedelta(days=1)
-            week_ago = datetime.utcnow() - timedelta(days=7)
             for a in db.query(Agent).all():
                 if not a.user:
                     continue
-                if (a.personality_vector or {}).get("sociability", 0.5) <= 0.4:
-                    continue
-                # at most one initiation per day from the scheduler
+
+                # Max 1 auto-introduction per agent per day.
                 if db.query(AgentInteraction).filter(
                     AgentInteraction.initiator_agent_id == a.id,
                     AgentInteraction.created_at >= day_ago,
                 ).count() >= 1:
                     continue
-                if not can_initiate(db, a):
+
+                candidates = []
+                for other in db.query(Agent).filter(Agent.id != a.id).all():
+                    if other.user_id == a.user_id:
+                        continue
+                    if already_connected(db, a.id, other.id):
+                        continue
+                    if recently_discovered(db, a.id, other.id, days=7):
+                        continue
+                    compat = compute_compatibility(a, other)
+                    candidates.append((other, compat))
+
+                if not candidates:
                     continue
+                candidates.sort(key=lambda x: x[1]["score"], reverse=True)
+                top5 = candidates[:5]
 
-                # agents contacted in the last 7 days are off-limits
-                recent_ids = {
-                    r.target_agent_id
-                    for r in db.query(AgentInteraction).filter(
-                        AgentInteraction.initiator_agent_id == a.id,
-                        AgentInteraction.last_contacted_at >= week_ago,
-                    ).all()
-                }
+                # Log all 5 for future reference.
+                for other, compat in top5:
+                    log_discovery(
+                        db, a.id, other.id, compat["score"], compat["reason"],
+                        acted_on=False, commit=False,
+                    )
+                db.commit()
 
-                for target, score in discover_compatible(db, a, limit=8):
-                    if (
-                        score > 60
-                        and (target.reputation_score or 0) > 40
-                        and target.id not in recent_ids
-                        and target.user_id != a.user_id
-                    ):
-                        initiate_interaction(db, a, target)
-                        add_memory(
-                            db, a, AgentMemoryType.interaction,
-                            f"Reached out to {target.name} (compat {score:.0f}).",
-                            importance=0.6,
-                        )
-                        break
+                # Auto-introduce to #1 only if score > 60.
+                best, best_compat = top5[0]
+                if best_compat["score"] > 60:
+                    interaction, _ = run_interaction(db, a, best)
+                    add_memory(
+                        db, a, AgentMemoryType.interaction,
+                        f"Reached out to {best.name} — {best_compat['reason']} "
+                        f"(compat {best_compat['score']:.0f}).",
+                        importance=0.6,
+                    )
         finally:
             db.close()
 
@@ -288,6 +307,21 @@ def reputation_decay():
     _run("reputation_decay", _do)
 
 
+def memory_mining():
+    """Daily 3am — mine 30d of chat/task history into tags, goals, personality."""
+
+    def _do():
+        from app.services.memory_indexer import run_memory_mining
+
+        db = SessionLocal()
+        try:
+            run_memory_mining(db)
+        finally:
+            db.close()
+
+    _run("memory_mining", _do)
+
+
 def register_jobs(scheduler) -> None:
     scheduler.add_job(agent_heartbeat, "interval", minutes=15, id="agent_heartbeat", replace_existing=True)
     scheduler.add_job(goal_check, "cron", hour=8, minute=0, id="goal_check", replace_existing=True)
@@ -295,3 +329,4 @@ def register_jobs(scheduler) -> None:
     scheduler.add_job(task_digest, "cron", hour=19, minute=0, id="task_digest", replace_existing=True)
     scheduler.add_job(personality_update, "cron", day_of_week="sun", hour=3, id="personality_update", replace_existing=True)
     scheduler.add_job(reputation_decay, "cron", day_of_week="sun", hour=4, id="reputation_decay", replace_existing=True)
+    scheduler.add_job(memory_mining, "cron", hour=3, minute=0, id="memory_mining", replace_existing=True)
