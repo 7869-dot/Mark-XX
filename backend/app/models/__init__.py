@@ -8,6 +8,7 @@ from app.models.interaction import (
 )
 from app.models.memory import ChatHistory, ConversationSummary, UserPersonality
 from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
+from app.models.integration import WatchedThread
 
 __all__ = [
     "User",
@@ -23,4 +24,5 @@ __all__ = [
     "RefreshToken",
     "SchedulerLock",
     "ReputationEvent",
+    "WatchedThread",
 ]

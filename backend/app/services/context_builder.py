@@ -3,8 +3,30 @@ from sqlalchemy.orm import Session
 from app.models import Agent, AgentMemory, ChatHistory, ConversationSummary, UserPersonality, User
 from app.services.world_context import build_world_context
 
+# Communication context (Gmail/Calendar) is only relevant for these task types.
+_COMM_TASK_TYPES = {"outreach", "scheduling", "analysis"}
 
-def build_agent_context(db: Session, agent: Agent) -> dict:
+
+def get_communication_context(db: Session, user: User) -> str:
+    """Upcoming schedule + connection state, for outreach/scheduling/analysis tasks."""
+    try:
+        from app.services.calendar_service import get_upcoming_summary
+
+        upcoming = (
+            get_upcoming_summary(db, user.id, days=2)
+            if getattr(user, "calendar_connected", False)
+            else "Calendar not connected."
+        )
+    except Exception:  # noqa: BLE001
+        upcoming = "Calendar unavailable."
+    return (
+        "Communication context:\n"
+        f"Upcoming schedule:\n{upcoming}\n"
+        f"Gmail connected: {bool(getattr(user, 'gmail_connected', False))}"
+    )
+
+
+def build_agent_context(db: Session, agent: Agent, task_type: str | None = None) -> dict:
     user: User = agent.user
 
     personality = db.query(UserPersonality).filter(UserPersonality.user_id == user.id).first()
@@ -44,6 +66,8 @@ def build_agent_context(db: Session, agent: Agent) -> dict:
     memory_text = "\n".join(f"- {m.content}" for m in memories) or "No notable memories yet."
 
     world = build_world_context(db)
+    if task_type in _COMM_TASK_TYPES:
+        world = world + "\n\n" + get_communication_context(db, user)
 
     goals = user.goals or []
     goals_text = "\n".join(f"- {g}" for g in goals) or "No goals set yet."

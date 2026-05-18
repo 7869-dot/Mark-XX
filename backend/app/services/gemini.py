@@ -153,6 +153,62 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "collaboration_preferences": "prefers high-signal, low-volume connections",
         })
 
+    if response_format == "inbox_summary":
+        return json.dumps({
+            "urgent": [
+                {"subject": "Series A timeline — quick question",
+                 "from": "dana@northstar.vc",
+                 "suggested_reply": "Happy to clarify the projections — the FY26 number assumes the new pricing; sending the bridge now."}
+            ],
+            "important": [
+                {"subject": "Contract for review (due Fri)",
+                 "from": "marcus@harborlaw.com",
+                 "suggested_reply": "Reviewed §4 and §7 — one tweak on indemnity, redline back to you tomorrow."}
+            ],
+            "informational": [
+                {"subject": "Weekly product newsletter", "from": "digest@producthunt.com"}
+            ],
+        })
+
+    if response_format == "email_reply":
+        return (
+            "Thanks for flagging this. The FY26 projection assumes the new pricing "
+            "tier we discussed — I've attached the bridge from current ARR so the "
+            "jump is fully traceable. Happy to walk through it live if useful; I'm "
+            "free Thursday afternoon."
+        )
+
+    if response_format == "schedule_email":
+        return (
+            "Would love to find time for a quick call on this. Three options that "
+            "work on my end:\n- Tue 10:00–10:30\n- Wed 14:00–14:30\n- Thu 11:00–11:30\n"
+            "Let me know which is easiest and I'll send an invite."
+        )
+
+    if response_format == "briefing":
+        return (
+            "Two external meetings today. The 10:00 investor call with Northstar runs "
+            "straight into your 10:00 design review — you're double-booked, resolve that "
+            "first. Block 30 min before the Northstar call for prep; nothing else needs "
+            "action."
+        )
+
+    if response_format == "meeting_prep":
+        return json.dumps({"bullets": [
+            "Northstar last asked about CAC payback — have the updated 11-month figure ready.",
+            "Dana flagged projections in her latest email; lead with the pricing bridge.",
+            "They invest at Series A, $2–4M checks; you're raising $3M.",
+            "Open thread from Tue is unanswered — acknowledge it in the call.",
+            "Goal: secure a partner meeting, not a term sheet today.",
+        ]})
+
+    if response_format == "email_digest":
+        return (
+            "This week: 42 emails, 9 threads. Top senders: Northstar (4), Legal (3), "
+            "Priya (3). Three threads need follow-up: the Series A projections, the MSA "
+            "redline (due Fri), and Priya's coffee request. Volume is down 18% vs last week."
+        )
+
     return "Stub response. Configure GEMINI_API_KEY for live generation."
 
 

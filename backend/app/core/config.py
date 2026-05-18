@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     SCHEDULER_TIMEZONE: str = "UTC"
     USE_STUBS: bool = True
 
+    # Google integration (Gmail + Calendar OAuth offline flow)
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/integrations/google/callback"
+    GOOGLE_OAUTH_SCOPES: str = (
+        "openid email profile "
+        "https://www.googleapis.com/auth/gmail.modify "
+        "https://www.googleapis.com/auth/calendar"
+    )
+    # Fernet key for encrypting Google tokens at rest. Empty -> derived dev key.
+    TOKEN_ENC_KEY: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

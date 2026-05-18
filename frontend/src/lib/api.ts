@@ -78,6 +78,14 @@ async function request<T>(
   return json.data as T;
 }
 
+/** Shared request helper for the src/api/* modules (auth + envelope aware). */
+export function apiRequest<T>(
+  path: string,
+  init: RequestInit & { silent?: boolean } = {}
+): Promise<T> {
+  return request<T>(path, init);
+}
+
 export const api = {
   // auth
   googleAuth: (payload: { email: string; name: string; avatar_url?: string }) =>

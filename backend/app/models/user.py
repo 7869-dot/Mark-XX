@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, JSON
+from sqlalchemy import Column, String, DateTime, JSON, Text, Boolean
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -22,6 +22,14 @@ class User(Base):
     onboarded = Column(JSON, default=lambda: {"completed": False, "step": 0})
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login_at = Column(DateTime, default=datetime.utcnow)
+
+    # Google integration tokens — stored Fernet-encrypted (see google_auth.py).
+    google_access_token = Column(Text, nullable=True)
+    google_refresh_token = Column(Text, nullable=True)
+    google_token_expiry = Column(DateTime, nullable=True)
+    google_scopes = Column(Text, nullable=True)
+    gmail_connected = Column(Boolean, default=False)
+    calendar_connected = Column(Boolean, default=False)
 
     agent = relationship("Agent", back_populates="user", uselist=False, cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")

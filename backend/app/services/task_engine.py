@@ -40,9 +40,10 @@ def execute_task(task_id: str) -> None:
         db.commit()
         log_event(logger, "task_transition", task_id=task.id, to="running")
 
-        ctx = build_agent_context(db, agent)
+        _tt = task.task_type.value if hasattr(task.task_type, "value") else task.task_type
+        ctx = build_agent_context(db, agent, task_type=_tt)
         prompt = TASK_EXECUTION.format(
-            task_type=task.task_type.value if hasattr(task.task_type, "value") else task.task_type,
+            task_type=_tt,
             task_title=task.title,
             task_description=task.description,
             **ctx,
