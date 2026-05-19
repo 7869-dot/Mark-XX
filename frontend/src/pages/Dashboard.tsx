@@ -5,6 +5,7 @@ import { ActivityFeed } from "@/components/feed/ActivityFeed";
 import { TaskCreatePanel } from "@/components/tasks/TaskCreatePanel";
 import { StatCard } from "@/components/ui/StatCard";
 import { TaskStatusBadge } from "@/components/tasks/TaskStatusBadge";
+import { IntegrationWidgets } from "@/components/dashboard/IntegrationWidgets";
 import type { AgentStats, Task } from "@/types";
 
 export function DashboardPage() {
@@ -67,6 +68,7 @@ export function DashboardPage() {
             + Dispatch task
           </button>
         </div>
+        <IntegrationWidgets />
         <ActivityFeed />
       </div>
 

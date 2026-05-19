@@ -8,6 +8,10 @@ import { AgentProfilePage } from "@/pages/AgentProfile";
 import { NetworkPage } from "@/pages/Network";
 import { TasksPage } from "@/pages/Tasks";
 import { InboxPage } from "@/pages/Inbox";
+import { GmailPage } from "@/pages/Gmail";
+import { CalendarPage } from "@/pages/Calendar";
+import { IntegrationsSettingsPage } from "@/pages/Settings/Integrations";
+import { AuthCallbackPage } from "@/pages/AuthCallback";
 import { ToastContainer } from "@/components/ui/ToastContainer";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -33,6 +37,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
             element={
               <Protected>
@@ -45,6 +50,12 @@ export default function App() {
             <Route path="/network" element={<NetworkPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/gmail" element={<GmailPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route
+              path="/settings/integrations"
+              element={<IntegrationsSettingsPage />}
+            />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
