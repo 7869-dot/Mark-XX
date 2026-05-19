@@ -3,7 +3,7 @@
 Persists turns to ChatHistory (the existing memory pipeline owns summarization
 and personality derivation downstream — this router only appends turns).
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -14,6 +14,7 @@ from app.prompts.templates import CHAT_CONVERSATION
 from app.services.context_builder import build_agent_context
 from app.services import gemini
 from app.services.agent_service import create_agent_for_user
+from app.memory.summarizer import summarize_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -45,7 +46,8 @@ def history(limit: int = 100, db: Session = Depends(get_db),
 
 
 @router.post("/message")
-def message(body: dict, db: Session = Depends(get_db),
+def message(body: dict, background_tasks: BackgroundTasks,
+            db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
     text = (body.get("message") or "").strip()
     if not text:
@@ -70,6 +72,9 @@ def message(body: dict, db: Session = Depends(get_db),
     db.add(agent_turn)
     db.commit()
     db.refresh(agent_turn)
+
+    # Compress the conversation into ConversationSummary off the response path.
+    background_tasks.add_task(summarize_user, user.id)
 
     return envelope(
         {"reply": _serialize(agent_turn), "echo": _serialize(user_turn)},
