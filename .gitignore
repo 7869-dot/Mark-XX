@@ -28,4 +28,9 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
-".claude/" 
+
+# Claude Code session + worktree data (never commit)
+.claude/
+
+# TS build cache
+*.tsbuildinfo
