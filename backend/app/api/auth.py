@@ -28,12 +28,17 @@ REFRESH_COOKIE = "axolot_refresh"
 
 
 def _set_refresh_cookie(response, token: str) -> None:
+    # Frontend (Vercel) and backend (Render) are different sites, so the cookie
+    # MUST be SameSite=None to be sent on cross-site fetch — and browsers reject
+    # SameSite=None unless Secure is also set, so force it.
+    samesite = (settings.COOKIE_SAMESITE or "lax").lower()
+    secure = settings.COOKIE_SECURE or samesite == "none"
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=token,
         httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
+        secure=secure,
+        samesite=samesite,
         domain=settings.COOKIE_DOMAIN or None,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
         path="/",

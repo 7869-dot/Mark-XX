@@ -6,6 +6,14 @@ Stub mode (USE_STUBS or missing client creds) fakes a deterministic identity so
 local dev never needs real Google credentials.
 """
 import hashlib
+import os
+
+# Google frequently returns a superset of the requested scopes (it adds
+# `openid`, reorders, etc.). Without this, oauthlib raises
+# "Scope has changed" inside flow.fetch_token() and real sign-in 500s — a
+# failure stub mode never exercises. Process-wide, so it also covers the
+# Gmail/Calendar grant in google_auth.py.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from app.core.config import settings
 from app.core.logging import get_logger
