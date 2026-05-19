@@ -145,7 +145,7 @@ def build_authorization_url(state: str) -> str:
     """Consent URL for the offline Gmail+Calendar grant."""
     if is_stub():
         # Frontend can just hit the callback directly with ?stub=1 in dev.
-        return f"{settings.GOOGLE_REDIRECT_URI}?state={state}&stub=1"
+        return f"{settings.GMAIL_REDIRECT_URI}?state={state}&stub=1"
 
     from google_auth_oauthlib.flow import Flow  # lazy
 
@@ -156,12 +156,12 @@ def build_authorization_url(state: str) -> str:
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
+                "redirect_uris": [settings.GMAIL_REDIRECT_URI],
             }
         },
         scopes=SCOPES,
     )
-    flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+    flow.redirect_uri = settings.GMAIL_REDIRECT_URI
     url, _ = flow.authorization_url(
         access_type="offline", include_granted_scopes="true",
         prompt="consent", state=state,
@@ -188,12 +188,12 @@ def exchange_code(code: str) -> dict:
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [settings.GOOGLE_REDIRECT_URI],
+                "redirect_uris": [settings.GMAIL_REDIRECT_URI],
             }
         },
         scopes=SCOPES,
     )
-    flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+    flow.redirect_uri = settings.GMAIL_REDIRECT_URI
     flow.fetch_token(code=code)
     creds = flow.credentials
     return {

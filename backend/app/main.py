@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.db import Base, engine
 from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
-from app.api import auth, agent, tasks, network, memory, system, integrations
+from app.api import auth, agent, tasks, network, memory, system, integrations, chat
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
 
@@ -55,9 +55,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # Explicit origins — wildcard breaks Google OAuth credentialed requests.
+_cors_origins = sorted({
+    settings.FRONTEND_URL,
+    "https://axolot.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+})
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,6 +113,7 @@ app.include_router(tasks.router)
 app.include_router(network.router)
 app.include_router(memory.router)
 app.include_router(integrations.router)
+app.include_router(chat.router)
 
 
 @app.get("/")

@@ -1,11 +1,11 @@
 /**
  * OAuth landing safety-net.
  *
- * The backend performs the Google authorization-code exchange server-side and
- * 302-redirects to /settings/integrations?connected=google (or ?error=true).
- * This route only exists in case anything ever lands on /auth/callback — it
- * forwards to the integrations settings page preserving query params so the
- * connect/error toast still fires. The frontend never handles the raw `code`.
+ * The sign-in flow normally lands on /dashboard?token=<jwt> (token captured
+ * app-wide before route guards run). The Gmail/Calendar grant 302s straight to
+ * /settings/integrations. This route only catches anything that lands on
+ * /auth/callback: if a session token is present go to the dashboard, otherwise
+ * forward to integrations settings preserving query params for the toast.
  */
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -15,13 +15,17 @@ export function AuthCallbackPage() {
   const [params] = useSearchParams();
 
   useEffect(() => {
+    if (localStorage.getItem("axolot_token")) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
     const qs = params.toString();
     navigate(`/settings/integrations${qs ? `?${qs}` : ""}`, { replace: true });
   }, [navigate, params]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <span className="font-mono text-xs text-silver-axo animate-pulse">
+      <span className="font-mono text-xs text-secondary animate-pulse">
         Connecting your account…
       </span>
     </div>
