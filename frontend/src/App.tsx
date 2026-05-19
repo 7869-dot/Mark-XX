@@ -1,9 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { AuthProvider } from "@/hooks/useAuth";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { LandingPage } from "@/pages/Landing";
 import { OnboardingPage } from "@/pages/Onboarding";
 import { DashboardPage } from "@/pages/Dashboard";
+import { ChatPage } from "@/pages/Chat";
 import { AgentProfilePage } from "@/pages/AgentProfile";
 import { NetworkPage } from "@/pages/Network";
 import { TasksPage } from "@/pages/Tasks";
@@ -13,21 +15,10 @@ import { CalendarPage } from "@/pages/Calendar";
 import { IntegrationsSettingsPage } from "@/pages/Settings/Integrations";
 import { AuthCallbackPage } from "@/pages/AuthCallback";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { captureTokenFromUrl } from "@/lib/api";
 
-function Protected({ children }: { children: React.ReactNode }) {
-  const { agent, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <span className="font-mono text-xs text-silver-axo animate-pulse">
-          Loading agent…
-        </span>
-      </div>
-    );
-  }
-  if (!agent) return <Navigate to="/onboarding" replace />;
-  return <>{children}</>;
-}
+// Must run before route guards read localStorage.
+captureTokenFromUrl();
 
 export default function App() {
   return (
@@ -36,16 +27,24 @@ export default function App() {
         <ToastContainer />
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route
+            path="/onboarding"
             element={
-              <Protected>
+              <ProtectedRoute>
+                <OnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            element={
+              <ProtectedRoute>
                 <AppShell />
-              </Protected>
+              </ProtectedRoute>
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/chat" element={<ChatPage />} />
             <Route path="/agent" element={<AgentProfilePage />} />
             <Route path="/network" element={<NetworkPage />} />
             <Route path="/tasks" element={<TasksPage />} />

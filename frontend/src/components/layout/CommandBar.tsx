@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
+import { Search } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 
 export function CommandBar() {
   const { agent } = useAuth();
+  const navigate = useNavigate();
   const [pendingCount, setPendingCount] = useState(0);
+  const [q, setQ] = useState("");
 
   useEffect(() => {
     if (!agent) return;
@@ -21,30 +25,64 @@ export function CommandBar() {
     return () => clearInterval(id);
   }, [agent]);
 
+  const initial = (agent?.user_name || agent?.name || "?")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+
   return (
-    <header className="h-14 border-b border-ink-700/60 bg-ink-900/70 backdrop-blur-md flex items-center justify-between px-6">
-      <div className="flex items-center gap-3">
-        <span className="label-mono">SYSTEM</span>
-        <span className="font-mono text-xs text-silver-axo">
-          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-        <span className="text-silver-axo/50">·</span>
-        <span className="font-mono text-xs text-cyan-axo">
-          {agent?.status === "busy" ? "executing" : "standing by"}
-        </span>
+    <header
+      className="h-14 flex items-center justify-between px-6 shrink-0"
+      style={{
+        background: "var(--bg-surface)",
+        borderBottom: "1px solid var(--border-subtle)",
+      }}
+    >
+      <div
+        className="flex items-center gap-2 px-3 h-9 w-full max-w-sm"
+        style={{
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          borderRadius: 8,
+        }}
+      >
+        <Search size={14} style={{ color: "var(--text-muted)" }} />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && q.trim()) navigate("/network");
+          }}
+          placeholder="Search agents, tasks, threads…"
+          className="bg-transparent outline-none text-sm w-full"
+          style={{ color: "var(--text-primary)", fontFamily: "var(--font-body)" }}
+        />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4 pl-4">
         {pendingCount > 0 && (
-          <a
-            href="/inbox"
-            className="chip border-amber-axo/40 text-amber-axo bg-amber-axo/5 hover:bg-amber-axo/10"
+          <button
+            onClick={() => navigate("/inbox")}
+            className="chip"
+            style={{
+              borderColor: "rgba(255,179,0,0.4)",
+              color: "var(--amber-bright)",
+            }}
           >
             {pendingCount} need{pendingCount === 1 ? "s" : ""} approval
-          </a>
+          </button>
         )}
-        <div className="font-mono text-xs text-silver-axo">
-          {agent ? agent.user_name : ""}
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-xs"
+          style={{
+            background: "var(--bg-overlay)",
+            border: "1px solid var(--border-default)",
+            color: "var(--teal-bright)",
+            fontFamily: "var(--font-display)",
+          }}
+          title={agent?.user_name || ""}
+        >
+          {initial}
         </div>
       </div>
     </header>

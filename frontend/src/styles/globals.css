@@ -4,70 +4,143 @@
 
 :root {
   color-scheme: dark;
-  --grid-size: 32px;
 }
 
 html, body, #root {
   height: 100%;
 }
 
+/* Biopunk Terminal — slow radial pulses in teal + coral at very low opacity. */
 body {
-  background-color: #080c14;
+  background-color: var(--bg-void);
   background-image:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 245, 212, 0.08), transparent 60%),
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 100% 100%, var(--grid-size) var(--grid-size), var(--grid-size) var(--grid-size);
+    radial-gradient(ellipse 60% 50% at 18% 0%, rgba(20, 212, 178, 0.07), transparent 60%),
+    radial-gradient(ellipse 50% 50% at 85% 100%, rgba(255, 112, 67, 0.05), transparent 60%);
   background-attachment: fixed;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 30% 30%, var(--teal-glow), transparent 45%),
+    radial-gradient(circle at 70% 70%, var(--coral-glow), transparent 45%);
+  opacity: 0.5;
+  animation: bgDrift 22s ease-in-out infinite alternate;
+}
+
+@keyframes bgDrift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(0, -3%, 0) scale(1.06); }
 }
 
 ::selection {
-  background: rgba(0, 245, 212, 0.25);
-  color: #00f5d4;
+  background: var(--teal-glow);
+  color: var(--teal-bright);
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1c2438; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #2a334a; }
+::-webkit-scrollbar-thumb { background: var(--bg-overlay); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2A3A48; }
+
+h1, h2, h3, h4 { font-family: var(--font-display); }
 
 @layer components {
   .panel {
-    @apply bg-ink-800/60 border border-ink-600/60 rounded-lg backdrop-blur-sm;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
   }
   .panel-inset {
-    @apply bg-ink-900/40 border border-ink-700/50 rounded-md;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+  }
+  .panel-hover:hover,
+  .panel-active {
+    border-color: var(--border-active);
+    box-shadow: 0 0 20px var(--teal-glow);
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md font-display text-sm
-           transition-all duration-150 border;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm
+           transition-all duration-150;
+    font-family: var(--font-display);
+    border-radius: 8px;
   }
   .btn-primary {
-    @apply btn bg-cyan-axo/10 border-cyan-axo/40 text-cyan-axo hover:bg-cyan-axo/20 hover:shadow-glow;
+    @apply btn;
+    background: var(--teal-mid);
+    color: var(--bg-void);
+    border: none;
+    font-weight: 700;
+  }
+  .btn-primary:hover {
+    background: var(--teal-bright);
+    box-shadow: 0 0 20px var(--teal-glow);
+  }
+  .btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
   .btn-amber {
-    @apply btn bg-amber-axo/10 border-amber-axo/40 text-amber-axo hover:bg-amber-axo/20 hover:shadow-amber;
+    @apply btn;
+    background: transparent;
+    border: 1px solid rgba(255, 179, 0, 0.4);
+    color: var(--amber-bright);
   }
+  .btn-amber:hover { box-shadow: 0 0 20px rgba(255, 179, 0, 0.18); }
   .btn-ghost {
-    @apply btn bg-transparent border-ink-600 text-silver-axo hover:border-ink-500 hover:text-white;
+    @apply btn;
+    background: transparent;
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
   }
+  .btn-ghost:hover { border-color: var(--border-active); }
   .btn-danger {
-    @apply btn bg-rose-axo/10 border-rose-axo/40 text-rose-axo hover:bg-rose-axo/20;
+    @apply btn;
+    background: transparent;
+    border: 1px solid rgba(255, 112, 67, 0.4);
+    color: var(--coral-bright);
   }
+  .btn-danger:hover { box-shadow: 0 0 20px var(--coral-glow); }
   .stat-num {
-    @apply font-display font-semibold text-2xl text-white tabular-nums;
+    @apply font-display font-bold text-2xl tabular-nums;
+    color: var(--text-primary);
   }
   .label-mono {
-    @apply font-mono text-[10px] tracking-[0.18em] uppercase text-silver-axo/70;
+    @apply text-[10px] tracking-[0.18em] uppercase;
+    font-family: var(--font-data);
+    color: var(--text-secondary);
+  }
+  .data-mono {
+    font-family: var(--font-data);
+    color: var(--text-muted);
   }
   .input {
-    @apply bg-ink-900/60 border border-ink-600 rounded-md px-3 py-2 text-sm text-white
-           placeholder:text-silver-axo/40 focus:outline-none focus:border-cyan-axo/60
-           focus:shadow-glow transition-all;
+    @apply px-3 py-2 text-sm w-full;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    color: var(--text-primary);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .input::placeholder { color: var(--text-muted); }
+  .input:focus {
+    outline: none;
+    border-color: var(--border-active);
+    box-shadow: 0 0 20px var(--teal-glow);
   }
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]
-           font-mono tracking-wider uppercase border;
+           tracking-wider uppercase border;
+    font-family: var(--font-data);
   }
 }

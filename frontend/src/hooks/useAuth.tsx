@@ -6,14 +6,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, clearTokens, setTokens } from "@/lib/api";
+import { api, clearTokens } from "@/lib/api";
 import type { Agent } from "@/types";
 
 type AuthContextValue = {
   agent: Agent | null;
   loading: boolean;
   onboarded: boolean;
-  signIn: (email: string, name: string) => Promise<void>;
   signOut: () => void;
   refreshAgent: () => Promise<void>;
 };
@@ -36,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("axolot_access");
+    const token = localStorage.getItem("axolot_token");
     if (!token) {
       setLoading(false);
       return;
@@ -44,23 +43,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshAgent().finally(() => setLoading(false));
   }, [refreshAgent]);
 
-  const signIn = useCallback(async (email: string, name: string) => {
-    const res = await api.googleAuth({ email, name });
-    setTokens(res.access_token, res.refresh_token);
-    setOnboarded(res.onboarded);
-    const a = await api.getAgent();
-    setAgent(a);
-  }, []);
-
   const signOut = useCallback(() => {
     clearTokens();
     setAgent(null);
     setOnboarded(false);
+    window.location.href = "/";
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ agent, loading, onboarded, signIn, signOut, refreshAgent }}
+      value={{ agent, loading, onboarded, signOut, refreshAgent }}
     >
       {children}
     </AuthContext.Provider>

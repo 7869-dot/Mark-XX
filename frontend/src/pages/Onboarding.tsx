@@ -67,15 +67,10 @@ function loadSnapshot(): Partial<OnboardingSnapshot> {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
-  const { agent, signIn, refreshAgent } = useAuth();
+  const { agent, refreshAgent } = useAuth();
   const snap = loadSnapshot();
 
-  const [step, setStep] = useState(snap.step ?? 0);
-
-  // Step 0 — sign in
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [signingIn, setSigningIn] = useState(false);
+  const [step, setStep] = useState(snap.step && snap.step >= 1 ? snap.step : 1);
 
   // Step 1 — agent name
   const [agentName, setAgentName] = useState(snap.agentName ?? "");
@@ -108,27 +103,12 @@ export function OnboardingPage() {
     );
   }, [step, agentName, chosenCategories, biggestGoal, pv]);
 
-  // If the user is already signed in but hasn't onboarded, skip the sign-in step.
+  // Seed the agent-name field from the agent created at sign-in.
   useEffect(() => {
-    if (agent && step === 0) {
-      setAgentName((n) => n || agent.name);
-      setStep(1);
-    }
-  }, [agent, step]);
+    if (agent) setAgentName((n) => n || agent.name);
+  }, [agent]);
 
   const next = () => setStep((s) => s + 1);
-
-  const handleSignIn = async () => {
-    if (!email || !name) return;
-    setSigningIn(true);
-    try {
-      await signIn(email, name);
-      setAgentName(`${name.split(" ")[0]}'s Agent`);
-      next();
-    } finally {
-      setSigningIn(false);
-    }
-  };
 
   const finalize = async () => {
     setActivating(true);
@@ -167,46 +147,6 @@ export function OnboardingPage() {
             ))}
           </div>
         </div>
-
-        {/* SIGN IN */}
-        {step === 0 && !agent && (
-          <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-2">Welcome.</h1>
-            <p className="font-mono text-sm text-silver-axo mb-6">
-              We're activating your agent. First — who are you?
-            </p>
-            <div className="space-y-4">
-              <div>
-                <label className="label-mono block mb-2">Name</label>
-                <input
-                  className="input w-full"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your full name"
-                />
-              </div>
-              <div>
-                <label className="label-mono block mb-2">Email</label>
-                <input
-                  className="input w-full"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@domain.com"
-                />
-              </div>
-              <button
-                disabled={!email || !name || signingIn}
-                onClick={handleSignIn}
-                className="btn-primary w-full"
-              >
-                {signingIn ? "Bringing your agent online..." : "Continue →"}
-              </button>
-              <p className="font-mono text-[11px] text-silver-axo/60 text-center">
-                Stub auth — replaces Google OAuth when keys are configured.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* STEP 1 — Name */}
         {step === 1 && (

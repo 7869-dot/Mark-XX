@@ -1,34 +1,52 @@
 import type { Config } from "tailwindcss";
 
+// Palette names kept stable so existing utility classes inherit the Biopunk
+// Terminal look without per-page rewrites. Values map to tokens.css.
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
         ink: {
-          950: "#04060b",
-          900: "#080c14",
-          800: "#0d1320",
-          700: "#141b2c",
-          600: "#1c2438",
-          500: "#2a334a",
+          950: "#050709",
+          900: "#080B0F", // --bg-void
+          800: "#0D1117", // --bg-surface
+          700: "#141B24", // --bg-elevated
+          600: "#1C2632", // --bg-overlay
+          500: "#2A3A48",
         },
         cyan: {
-          axo: "#00f5d4",
+          axo: "#14D4B2", // --teal-bright
+        },
+        teal: {
+          dim: "#0B3D3A",
+          mid: "#0F7A6B",
+          bright: "#14D4B2",
         },
         amber: {
-          axo: "#ffb347",
+          axo: "#FFB300", // --amber-bright
+        },
+        coral: {
+          dim: "#3D1A0B",
+          mid: "#C44A1A",
+          bright: "#FF7043",
         },
         silver: {
-          axo: "#8892a4",
+          axo: "#7A8A9E", // --text-secondary
         },
         rose: {
-          axo: "#ff6b6b",
+          axo: "#FF7043", // --coral-bright
         },
       },
+      textColor: {
+        primary: "#E8EDF3",
+        secondary: "#7A8A9E",
+        muted: "#3D4E61",
+      },
       fontFamily: {
-        display: ["'Space Grotesk'", "ui-sans-serif", "system-ui"],
-        mono: ["'IBM Plex Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
+        display: ["'Space Mono'", "ui-monospace", "monospace"],
+        body: ["'DM Sans'", "ui-sans-serif", "system-ui"],
+        mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       fontVariantNumeric: {
         tabular: "tabular-nums",
@@ -38,6 +56,7 @@ export default {
         "slide-in": "slideIn 200ms ease-out",
         "fade-in": "fadeIn 300ms ease-out",
         "bloom": "bloom 600ms ease-out",
+        "breathe": "breathe 3s ease-in-out infinite",
       },
       keyframes: {
         pulseDot: {
@@ -57,14 +76,20 @@ export default {
           "60%": { opacity: "1", transform: "scale(1.05)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        breathe: {
+          "0%, 100%": { transform: "scale(1)" },
+          "50%": { transform: "scale(1.04)" },
+        },
       },
       boxShadow: {
-        glow: "0 0 24px rgba(0, 245, 212, 0.25)",
-        amber: "0 0 24px rgba(255, 179, 71, 0.22)",
+        glow: "0 0 20px rgba(20, 212, 178, 0.15)",
+        "glow-strong": "0 0 24px rgba(20, 212, 178, 0.30)",
+        amber: "0 0 24px rgba(255, 179, 0, 0.22)",
+        coral: "0 0 20px rgba(255, 112, 67, 0.18)",
       },
       backgroundImage: {
         grid:
-          "linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)",
+          "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
       },
     },
   },
