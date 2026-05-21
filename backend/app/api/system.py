@@ -13,29 +13,57 @@ from app.services.gemini import ping as gemini_ping
 router = APIRouter(tags=["system"])
 
 
-@router.get("/health")
-def health(response: Response, db: Session = Depends(get_db)):
-    """Railway deploy health check — 200 only if DB, scheduler, and Gemini pass."""
-    checks = {"database": False, "scheduler": False, "gemini": False}
-
+def _check_database(db: Session) -> bool:
     try:
         db.execute(text("SELECT 1"))
-        checks["database"] = True
+        return True
     except Exception:  # noqa: BLE001
-        pass
+        return False
 
+
+def _check_scheduler() -> bool:
     try:
         from app.main import scheduler  # late import to avoid cycle
 
-        checks["scheduler"] = bool(scheduler.running)
+        return bool(scheduler.running)
     except Exception:  # noqa: BLE001
-        pass
+        return False
 
+
+def _check_gemini() -> bool:
     try:
-        checks["gemini"] = gemini_ping()
+        return gemini_ping()
     except Exception:  # noqa: BLE001
-        pass
+        return False
 
+
+# Render's uptime monitor hits /health. Keep it cheap and dependency-light —
+# only the DB and scheduler need to be up for the app to serve traffic. A
+# transient Gemini outage shouldn't bounce the service.
+@router.get("/health")
+def health(response: Response, db: Session = Depends(get_db)):
+    """Lightweight liveness probe — DB + scheduler only (used by Render)."""
+    checks = {"database": _check_database(db), "scheduler": _check_scheduler()}
+    ok = all(checks.values())
+    if not ok:
+        response.status_code = 503
+    return envelope({
+        "status": "ok" if ok else "degraded",
+        "checks": checks,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+
+
+# Deeper check for human operators and dashboards — includes Gemini, which can
+# blip independently of the app being able to serve cached/stub responses.
+@router.get("/health/full")
+def health_full(response: Response, db: Session = Depends(get_db)):
+    """Full health check — DB + scheduler + Gemini. Not for uptime monitoring."""
+    checks = {
+        "database": _check_database(db),
+        "scheduler": _check_scheduler(),
+        "gemini": _check_gemini(),
+    }
     ok = all(checks.values())
     if not ok:
         response.status_code = 503

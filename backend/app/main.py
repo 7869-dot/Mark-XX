@@ -90,9 +90,14 @@ _cors_origins = sorted({
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 })
+# Vercel preview deploys land on axolot-git-<branch>-<scope>.vercel.app and
+# axolot-<hash>-<scope>.vercel.app. Allow them via regex so stakeholder demos
+# aren't blocked by CORS without opening up to every *.vercel.app site.
+_cors_origin_regex = r"^https://axolot(-git)?-[a-z0-9-]+\.vercel\.app$"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
