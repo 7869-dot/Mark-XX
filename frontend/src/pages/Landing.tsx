@@ -1,11 +1,23 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { pushToast } from "@/lib/toast";
 
 const BACKEND =
   import.meta.env.VITE_BACKEND_URL ||
   import.meta.env.VITE_API_URL ||
   "";
+
+// Human-friendly messages for the ?error=… codes set by /auth/google/callback.
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_failed: "Google sign-in failed. Please try again.",
+  oauth_state_mismatch: "Sign-in expired. Please try again.",
+  oauth_no_code: "Google didn't return an authorization code. Try again.",
+  oauth_exchange_failed: "Could not complete sign-in with Google.",
+  oauth_no_email: "Google didn't share an email. Check your account permissions.",
+  oauth_persist_failed: "We couldn't save your account. Please try again.",
+  access_denied: "You declined to sign in. Try again when you're ready.",
+};
 
 function GoogleIcon() {
   return (
@@ -34,7 +46,27 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (localStorage.getItem("axolot_token")) navigate("/dashboard");
+    if (localStorage.getItem("axolot_token")) {
+      navigate("/dashboard");
+      return;
+    }
+    // Surface OAuth failure codes set by the backend callback.
+    const params = new URLSearchParams(window.location.search);
+    const errorCode = params.get("error");
+    if (errorCode) {
+      pushToast(
+        OAUTH_ERROR_MESSAGES[errorCode] || "Sign-in failed. Please try again.",
+        "error"
+      );
+      // Scrub the param so a refresh doesn't re-fire the toast.
+      params.delete("error");
+      const search = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname + (search ? `?${search}` : "")
+      );
+    }
   }, [navigate]);
 
   const handleGoogleLogin = () => {

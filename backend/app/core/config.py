@@ -72,7 +72,38 @@ class Settings(BaseSettings):
             self.GMAIL_REDIRECT_URI = f"{self.AXOLOT_BACKEND_URL}/integrations/google/callback"
         if not self.CALENDAR_REDIRECT_URI:
             self.CALENDAR_REDIRECT_URI = self.GMAIL_REDIRECT_URI
+
+        # Auto-pick a cross-site-compatible cookie policy when the frontend and
+        # backend live on different sites (Vercel ↔ Render). Browsers drop a
+        # SameSite=Lax cookie on cross-site fetch, which silently breaks the
+        # /auth/refresh round-trip and forces re-login every 15 minutes.
+        if self._is_cross_site() and (self.COOKIE_SAMESITE or "lax").lower() != "none":
+            self.COOKIE_SAMESITE = "none"
+            self.COOKIE_SECURE = True
         return self
+
+    def _is_cross_site(self) -> bool:
+        try:
+            from urllib.parse import urlparse
+
+            fe = urlparse(self.FRONTEND_URL or "").hostname or ""
+            be = urlparse(self.AXOLOT_BACKEND_URL or "").hostname or ""
+            if not fe or not be:
+                return False
+            # Same registrable host → same-site. Localhost stays same-site.
+            return fe.split(".")[-2:] != be.split(".")[-2:]
+        except Exception:  # noqa: BLE001
+            return False
+
+    def is_production(self) -> bool:
+        """Heuristic: any non-localhost backend URL is treated as production."""
+        try:
+            from urllib.parse import urlparse
+
+            host = (urlparse(self.AXOLOT_BACKEND_URL or "").hostname or "").lower()
+            return host not in {"", "localhost", "127.0.0.1", "0.0.0.0"}
+        except Exception:  # noqa: BLE001
+            return False
 
 
 @lru_cache

@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -52,11 +53,50 @@ def _ensure_agent(db: Session, user: User) -> None:
 
 
 # ── Google sign-in (authorization-code flow) ───────────────────────────────
+#
+# Full flow:
+#   1. Browser → GET /auth/google/redirect
+#        Generates an opaque CSRF state (stored in a short-lived state cookie),
+#        builds the Google consent URL, 302s the browser there.
+#   2. Google → GET /auth/google/callback?code=…&state=…
+#        Validates state cookie matches state param (mismatch ⇒ redirect home).
+#        If Google returned ?error=… (user denied, etc), surfaces that to the
+#        landing page via ?error=<code>.
+#        Exchanges the auth code for an id_token + refresh token (live mode)
+#        or a deterministic fake identity (stub mode).
+#        Upserts the User + Agent rows, issues a JWT access token, sets the
+#        httpOnly refresh-token cookie (SameSite auto-resolves cross-site —
+#        see config._is_cross_site), and 302s the browser to
+#        {FRONTEND_URL}/dashboard?token=<jwt>. The SPA captures the token from
+#        the URL on first paint (lib/api.ts:captureTokenFromUrl), scrubs it,
+#        and persists it in localStorage. From then on the SPA sends it as a
+#        Bearer header; when it expires the SPA hits /auth/refresh which
+#        validates the refresh cookie and rotates the pair.
+OAUTH_STATE_COOKIE = "axolot_oauth_state"
+
+
+def _fail_redirect(code: str = "oauth_failed") -> RedirectResponse:
+    return RedirectResponse(url=f"{settings.FRONTEND_URL}/?error={quote(code)}")
+
+
 @router.get("/google/redirect")
 def google_redirect():
     """Kick off Google sign-in: redirect the browser to Google's consent screen."""
     state = secrets.token_urlsafe(24)
-    return RedirectResponse(url=google_login.build_login_url(state))
+    resp = RedirectResponse(url=google_login.build_login_url(state))
+    # Short-lived, HTTP-only CSRF cookie — must round-trip on the callback.
+    samesite = (settings.COOKIE_SAMESITE or "lax").lower()
+    secure = settings.COOKIE_SECURE or samesite == "none"
+    resp.set_cookie(
+        key=OAUTH_STATE_COOKIE,
+        value=state,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        max_age=600,  # 10 minutes
+        path="/auth/google",
+    )
+    return resp
 
 
 @router.get("/google/callback")
@@ -64,58 +104,83 @@ def google_callback(
     request: Request,
     code: str = "",
     state: str = "",
+    error: str = "",
     stub: int = 0,
     db: Session = Depends(get_db),
 ):
     """Google redirects here after consent. Exchange code → JWT, set cookie,
     bounce to the frontend dashboard with the access token in the URL."""
-    fail_url = f"{settings.FRONTEND_URL}/?error=oauth_failed"
+    # 1. Surface explicit Google-side denial (user clicked Cancel, etc).
+    if error:
+        log_event(logger, "google_login_denied", reason=error)
+        return _fail_redirect(error)
+
+    # 2. CSRF state check (skipped in stub mode where the flow short-circuits).
+    expected_state = request.cookies.get(OAUTH_STATE_COOKIE)
+    if not google_login.is_stub() and expected_state and state and expected_state != state:
+        log_event(logger, "google_login_state_mismatch")
+        return _fail_redirect("oauth_state_mismatch")
+
+    # 3. In live mode, an empty code means Google never gave us one — bail out
+    #    rather than feeding "" into the token exchange and 500-ing.
+    if not code and not google_login.is_stub():
+        log_event(logger, "google_login_no_code")
+        return _fail_redirect("oauth_no_code")
+
     try:
         identity = google_login.exchange_and_verify(code or f"stub-{state}")
     except Exception as exc:  # noqa: BLE001
         log_event(logger, "google_login_failed", error=str(exc))
-        return RedirectResponse(url=fail_url)
+        return _fail_redirect("oauth_exchange_failed")
 
     email = identity.get("email")
     if not email:
-        return RedirectResponse(url=fail_url)
+        log_event(logger, "google_login_no_email")
+        return _fail_redirect("oauth_no_email")
 
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        user = User(
-            email=email,
-            name=identity.get("name") or email.split("@")[0],
-            avatar_url=identity.get("picture"),
-            google_id=identity.get("sub"),
-        )
-        db.add(user)
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(
+                email=email,
+                name=identity.get("name") or email.split("@")[0],
+                avatar_url=identity.get("picture"),
+                google_id=identity.get("sub"),
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            create_agent_for_user(db, user)
+            log_event(logger, "user_registered", user_id=user.id)
+        else:
+            if identity.get("picture"):
+                user.avatar_url = identity["picture"]
+            if identity.get("sub") and not user.google_id:
+                user.google_id = identity["sub"]
+
+        _ensure_agent(db, user)
+
+        # Persist the sign-in refresh token (openid scope only). Never clobber a
+        # richer Gmail/Calendar grant — that flow owns google_refresh_token when
+        # a broader scope has been authorized.
+        rt = identity.get("refresh_token")
+        if rt and not (user.gmail_connected or user.calendar_connected):
+            user.google_refresh_token = google_auth.encrypt(rt)
+
+        user.last_login_at = datetime.utcnow()
         db.commit()
-        db.refresh(user)
-        create_agent_for_user(db, user)
-        log_event(logger, "user_registered", user_id=user.id)
-    else:
-        if identity.get("picture"):
-            user.avatar_url = identity["picture"]
-        if identity.get("sub") and not user.google_id:
-            user.google_id = identity["sub"]
 
-    _ensure_agent(db, user)
-
-    # Persist the sign-in refresh token (openid scope only). Never clobber a
-    # richer Gmail/Calendar grant — that flow owns google_refresh_token when a
-    # broader scope has been authorized.
-    rt = identity.get("refresh_token")
-    if rt and not (user.gmail_connected or user.calendar_connected):
-        user.google_refresh_token = google_auth.encrypt(rt)
-
-    user.last_login_at = datetime.utcnow()
-    db.commit()
-
-    access = create_access_token(user.id)
-    refresh = create_refresh_token(user.id, db)
+        access = create_access_token(user.id)
+        refresh = create_refresh_token(user.id, db)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log_event(logger, "google_login_db_failed", error=str(exc))
+        return _fail_redirect("oauth_persist_failed")
 
     resp = RedirectResponse(url=f"{settings.FRONTEND_URL}/dashboard?token={access}")
     _set_refresh_cookie(resp, refresh)
+    # Clear the one-shot state cookie — it's done its job.
+    resp.delete_cookie(OAUTH_STATE_COOKIE, path="/auth/google")
     return resp
 
 

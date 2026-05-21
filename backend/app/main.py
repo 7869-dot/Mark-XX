@@ -27,8 +27,29 @@ scheduler = BackgroundScheduler(
 )
 
 
+def _startup_self_check() -> None:
+    """Loudly warn if running in production-like environment with insecure defaults.
+    Don't crash — Render rolls deploys back on non-zero exits, and we want the
+    operator to see the warning in logs and fix it next deploy.
+    """
+    if not settings.is_production():
+        return
+    issues: list[str] = []
+    if settings.JWT_SECRET in {"dev-jwt-secret-change-me", ""} and not settings.SECRET_KEY:
+        issues.append("SECRET_KEY (or JWT_SECRET) is unset — sessions can be forged")
+    if not settings.TOKEN_ENC_KEY and not settings.ENCRYPTION_KEY:
+        issues.append("ENCRYPTION_KEY is unset — Google tokens use a derived dev key")
+    if settings.USE_STUBS:
+        issues.append("USE_STUBS=true in production — Gemini and Google flows are faked")
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        issues.append("GOOGLE_CLIENT_ID/SECRET unset — real Google sign-in disabled")
+    for msg in issues:
+        log_event(logger, "startup_warning", issue=msg)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _startup_self_check()
     Base.metadata.create_all(bind=engine)
     # One-time idempotent cut-over of legacy social_graph -> agent_connections.
     from app.core.db import SessionLocal
@@ -44,7 +65,15 @@ async def lifespan(app: FastAPI):
 
     register_jobs(scheduler)
     scheduler.start()
-    log_event(logger, "startup", jobs=[j.id for j in scheduler.get_jobs()])
+    log_event(
+        logger, "startup",
+        jobs=[j.id for j in scheduler.get_jobs()],
+        cors_origins=_cors_origins,
+        cookie_samesite=settings.COOKIE_SAMESITE,
+        cookie_secure=settings.COOKIE_SECURE,
+        stub_mode=settings.USE_STUBS,
+        production=settings.is_production(),
+    )
     yield
     scheduler.shutdown(wait=False)
 
