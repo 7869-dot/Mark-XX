@@ -80,7 +80,8 @@ def _fail_redirect(code: str = "oauth_failed") -> RedirectResponse:
 
 
 @router.get("/google/redirect")
-def google_redirect():
+@limiter.limit("30/minute")
+def google_redirect(request: Request):
     """Kick off Google sign-in: redirect the browser to Google's consent screen."""
     state = secrets.token_urlsafe(24)
     resp = RedirectResponse(url=google_login.build_login_url(state))
@@ -242,6 +243,7 @@ def google_auth_post(request: Request, req: GoogleAuthRequest, db: Session = Dep
 
 
 @router.post("/refresh")
+@limiter.limit("60/minute")
 async def refresh(request: Request, db: Session = Depends(get_db)):
     """Rotate the refresh token. Reads it from the httpOnly cookie (preferred)
     or a JSON body (legacy clients). Returns a fresh access token + sets the

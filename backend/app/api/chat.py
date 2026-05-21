@@ -3,11 +3,13 @@
 Persists turns to ChatHistory (the existing memory pipeline owns summarization
 and personality derivation downstream — this router only appends turns).
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.core.ratelimit import limiter
 from app.models import User, ChatHistory
 from app.api.envelope import envelope
 from app.prompts.templates import CHAT_CONVERSATION
@@ -17,6 +19,11 @@ from app.services.agent_service import create_agent_for_user
 from app.memory.summarizer import summarize_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+class ChatMessageIn(BaseModel):
+    # Hard ceiling protects Gemini token cost + the prompt-injection surface.
+    message: str = Field(..., min_length=1, max_length=4000)
 
 
 def _serialize(m: ChatHistory) -> dict:
@@ -46,10 +53,11 @@ def history(limit: int = 100, db: Session = Depends(get_db),
 
 
 @router.post("/message")
-def message(body: dict, background_tasks: BackgroundTasks,
+@limiter.limit("30/minute")
+def message(request: Request, body: ChatMessageIn, background_tasks: BackgroundTasks,
             db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
-    text = (body.get("message") or "").strip()
+    text = body.message.strip()
     if not text:
         raise HTTPException(status_code=400, detail="message is required")
 
