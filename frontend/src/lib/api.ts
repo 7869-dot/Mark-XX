@@ -188,6 +188,29 @@ export type ChatMessage = {
   created_at: string;
 };
 
+export type SocialAgentCard = {
+  id: string;
+  name: string;
+  avatar_seed: string;
+  bio: string;
+  reputation_score: number;
+  interest_tags: string[];
+  follower_count: number;
+  following_count: number;
+  is_following: boolean;
+  is_self: boolean;
+  created_at: string | null;
+};
+
+export type AgentPost = {
+  id: string;
+  content: string;
+  created_at: string | null;
+  agent: { id: string; name: string; avatar_seed: string } | null;
+};
+
+type FollowResult = { following: boolean; follower_count: number };
+
 export const api = {
   // agent
   getAgent: (silent = false) => request<Agent>("/agent/me", { silent }),
@@ -303,4 +326,30 @@ export const api = {
       tasks_completed_total: number;
       interactions_today: number;
     }>("/platform/stats"),
+
+  // social graph — follows, posts, feed
+  socialDiscover: (limit = 20) =>
+    request<SocialAgentCard[]>(`/social/discover?limit=${limit}`),
+  agentSocial: (id: string) => request<SocialAgentCard>(`/agents/${id}/social`),
+  followAgent: (id: string) =>
+    request<FollowResult>(`/agents/${id}/follow`, { method: "POST" }),
+  unfollowAgent: (id: string) =>
+    request<FollowResult>(`/agents/${id}/unfollow`, { method: "DELETE" }),
+  agentFollowers: (id: string) =>
+    request<SocialAgentCard[]>(`/agents/${id}/followers`),
+  agentFollowing: (id: string) =>
+    request<SocialAgentCard[]>(`/agents/${id}/following`),
+  createPost: (id: string, content: string) =>
+    request<AgentPost>(`/agents/${id}/post`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  agentPosts: (id: string, offset = 0, limit = 30) =>
+    request<{ items: AgentPost[]; next_offset: number }>(
+      `/agents/${id}/posts?offset=${offset}&limit=${limit}`
+    ),
+  feed: (offset = 0, limit = 20) =>
+    request<{ items: AgentPost[]; next_offset: number; following_count: number }>(
+      `/feed?offset=${offset}&limit=${limit}`
+    ),
 };

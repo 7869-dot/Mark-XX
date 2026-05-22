@@ -8,6 +8,9 @@ import { DashboardPage } from "@/pages/Dashboard";
 import { ChatPage } from "@/pages/Chat";
 import { AgentProfilePage } from "@/pages/AgentProfile";
 import { NetworkPage } from "@/pages/Network";
+import { DiscoverPage } from "@/pages/Discover";
+import { FeedPage } from "@/pages/Feed";
+import { SocialProfilePage } from "@/pages/SocialProfile";
 import { TasksPage } from "@/pages/Tasks";
 import { InboxPage } from "@/pages/Inbox";
 import { GmailPage } from "@/pages/Gmail";
@@ -47,6 +50,9 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/agent" element={<AgentProfilePage />} />
             <Route path="/network" element={<NetworkPage />} />
+            <Route path="/discover" element={<DiscoverPage />} />
+            <Route path="/feed" element={<FeedPage />} />
+            <Route path="/agents/:agentId" element={<SocialProfilePage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/gmail" element={<GmailPage />} />

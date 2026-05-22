@@ -9,6 +9,7 @@ from app.models.interaction import (
 from app.models.memory import ChatHistory, ConversationSummary, UserPersonality
 from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
 from app.models.integration import WatchedThread
+from app.models.social import AgentFollow, AgentPost
 
 __all__ = [
     "User",
@@ -25,4 +26,6 @@ __all__ = [
     "SchedulerLock",
     "ReputationEvent",
     "WatchedThread",
+    "AgentFollow",
+    "AgentPost",
 ]
