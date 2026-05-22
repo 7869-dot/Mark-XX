@@ -93,10 +93,18 @@ export function ChatPage() {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = (smooth = true) => {
+    // Double rAF: the first frame lets React commit the new message node, the
+    // second lets the browser lay it out — so scrollHeight is final before we
+    // scroll. A single rAF occasionally scrolled to a stale (short) height and
+    // stopped above the latest message.
     requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: smooth ? "smooth" : "auto",
+      requestAnimationFrame(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        el.scrollTo({
+          top: el.scrollHeight,
+          behavior: smooth ? "smooth" : "auto",
+        });
       });
     });
   };
@@ -138,9 +146,15 @@ export function ChatPage() {
     setSending(true);
     try {
       const res = await api.sendChatMessage(text);
+      // Keep the optimistic row's id when swapping in the server echo. The
+      // AnimatePresence key is the row id — letting it change from `tmp-…` to
+      // the real UUID re-mounted the bubble, causing a visible exit/enter
+      // flicker on every send. Stable id = no flicker.
       setRows((r) =>
         r
-          .map((m) => (m.id === optimistic.id ? res.echo : m))
+          .map((m) =>
+            m.id === optimistic.id ? { ...res.echo, id: optimistic.id } : m
+          )
           .concat(res.reply)
       );
     } catch {

@@ -41,6 +41,8 @@ def _startup_self_check() -> None:
         issues.append("ENCRYPTION_KEY is unset — Google tokens use a derived dev key")
     if settings.USE_STUBS:
         issues.append("USE_STUBS=true in production — Gemini and Google flows are faked")
+    if not settings.GEMINI_API_KEY:
+        issues.append("GEMINI_API_KEY unset — chat/agents return canned stub text")
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         issues.append("GOOGLE_CLIENT_ID/SECRET unset — real Google sign-in disabled")
     for msg in issues:

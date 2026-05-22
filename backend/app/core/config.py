@@ -31,7 +31,14 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "https://axolot.vercel.app"
     AXOLOT_BACKEND_URL: str = "http://localhost:8000"
     SCHEDULER_TIMEZONE: str = "UTC"
-    USE_STUBS: bool = True
+
+    # Force-stub override. Defaults to FALSE so a production deploy that
+    # provisions GEMINI_API_KEY / Google creds goes live automatically —
+    # operators no longer have to remember a second "USE_STUBS=false" var.
+    # Each service ALSO independently falls back to stub when ITS OWN key is
+    # absent (see gemini.py / google_auth.py), so an unset key never crashes.
+    # Local dev / tests opt into full stub mode by setting USE_STUBS=true.
+    USE_STUBS: bool = False
 
     # Login OAuth (Google sign-in) — distinct from the Gmail/Calendar grant.
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"

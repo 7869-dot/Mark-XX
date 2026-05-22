@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.config import settings
+from app.core.logging import get_logger, log_event
 from app.core.security import get_current_user, create_access_token, decode_token
 from app.models import User
 from app.services import google_auth, gmail_service, calendar_service
 from app.services import agent_email_tasks, agent_calendar_tasks
 
+logger = get_logger("axolot.integrations")
 router = APIRouter(tags=["integrations"])
 
 
@@ -64,33 +66,77 @@ def calendar_connect(user: User = Depends(get_current_user)):
     return _start_connect(user)
 
 
+# The Gmail/Calendar offline grant is registered at THREE paths so it works no
+# matter which redirect_uri the Google Cloud Console / GMAIL_REDIRECT_URI env
+# is set to:
+#   /integrations/google/callback          — the canonical path
+#   /auth/google/callback/gmail            — what current prod creds whitelist
+#   /auth/google/callback/calendar         — calendar variant of the above
+# All three run the SAME handler: the user is identified entirely from the
+# signed `state` JWT, not the path, so the suffix is cosmetic. See the OAuth
+# redirect-URI checklist in README / the deploy notes.
 @router.get("/integrations/google/callback")
+@router.get("/auth/google/callback/gmail")
+@router.get("/auth/google/callback/calendar")
 def google_callback(
     request: Request,
     state: str = "",
     code: str = "",
+    error: str = "",
     stub: int = 0,
     db: Session = Depends(get_db),
 ):
-    """Google redirects here after consent. Exchanges code, stores tokens."""
+    """Google redirects here after the Gmail/Calendar consent screen.
+
+    Flow: validate the signed `state` JWT → resolve the user → exchange the
+    auth `code` for access+refresh tokens → store them Fernet-encrypted on the
+    user row → bounce back to the integrations settings page.
+    """
     err_url = f"{settings.FRONTEND_URL}/settings/integrations?error=true"
-    try:
-        payload = decode_token(state)
-        user_id = payload.get("sub")
-    except Exception:  # noqa: BLE001
-        return RedirectResponse(url=err_url)
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+
+    # 0. The user denied consent (or Google errored) — nothing to exchange.
+    if error:
+        log_event(logger, "google_connect_denied", reason=error)
         return RedirectResponse(url=err_url)
 
+    # 1. Decode + validate the state JWT. It must be one we issued for THIS
+    #    flow — `_start_connect` stamps it with scope="google_connect".
+    try:
+        payload = decode_token(state)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "google_connect_bad_state", error=str(exc))
+        return RedirectResponse(url=err_url)
+    if payload.get("scope") != "google_connect":
+        log_event(logger, "google_connect_wrong_scope", scope=payload.get("scope"))
+        return RedirectResponse(url=err_url)
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        log_event(logger, "google_connect_unknown_user", user_id=user_id)
+        return RedirectResponse(url=err_url)
+
+    # 2. A live (non-stub) flow with no code can't be exchanged — bail cleanly
+    #    instead of feeding "" into Google's token endpoint.
+    if not code and not google_auth.is_stub():
+        log_event(logger, "google_connect_no_code", user_id=user_id)
+        return RedirectResponse(url=err_url)
+
+    # 3. Exchange the code and persist the encrypted tokens against the user.
     try:
         tokens = google_auth.exchange_code(code or f"stub-{user_id}")
         google_auth.store_tokens(
             db, user, tokens["access_token"], tokens["refresh_token"],
             tokens["expiry"], tokens["scopes"],
         )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log_event(logger, "google_connect_exchange_failed", user_id=user_id, error=str(exc))
         return RedirectResponse(url=err_url)
+
+    log_event(
+        logger, "google_connect_ok",
+        user_id=user_id, gmail=user.gmail_connected, calendar=user.calendar_connected,
+    )
     return RedirectResponse(
         url=f"{settings.FRONTEND_URL}/settings/integrations?connected=google"
     )
