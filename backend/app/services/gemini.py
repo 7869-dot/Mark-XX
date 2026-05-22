@@ -258,6 +258,50 @@ def generate(prompt: str, response_format: str = "text") -> str:
     return _stub_response(prompt, response_format)
 
 
+def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> str:
+    """Generate a reply, letting the model autonomously call `tools`.
+
+    `tools` is a list of plain Python callables (see agent_tools.build_agent_tools).
+    Gemini's automatic function-calling picks which tool to invoke from the
+    prompt, runs it, and folds the result into the final answer.
+
+    Falls back to keyword-routed stub execution when no live Gemini key is
+    configured, so tool use still works end-to-end offline. Never raises.
+    """
+    from app.services.agent_tools import stub_tool_response
+
+    if not tools:
+        return generate(prompt, response_format="text")
+
+    if settings.USE_STUBS or not settings.GEMINI_API_KEY:
+        return stub_tool_response(hint or prompt, tools)
+
+    start = time.perf_counter()
+    try:
+        import google.generativeai as genai  # type: ignore
+
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash", tools=tools)
+        chat = model.start_chat(enable_automatic_function_calling=True)
+        response = chat.send_message(prompt)
+        text = (getattr(response, "text", "") or "").strip()
+        log_event(
+            logger, "gemini_tool_call",
+            latency_ms=round((time.perf_counter() - start) * 1000, 1),
+            tool_count=len(tools), ok=True,
+        )
+        # Empty text can happen if the model ended on a bare tool call — fall
+        # back to deterministic routing so the user still gets an answer.
+        return text or stub_tool_response(hint or prompt, tools)
+    except Exception as exc:  # noqa: BLE001
+        log_event(
+            logger, "gemini_tool_call_failed",
+            latency_ms=round((time.perf_counter() - start) * 1000, 1),
+            error=str(exc),
+        )
+        return stub_tool_response(hint or prompt, tools)
+
+
 def ping() -> bool:
     """Cheap liveness check for /health. True if stubbed or a 1-token call works."""
     if settings.USE_STUBS or not settings.GEMINI_API_KEY:

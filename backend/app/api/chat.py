@@ -16,7 +16,17 @@ from app.prompts.templates import CHAT_CONVERSATION
 from app.services.context_builder import build_agent_context
 from app.services import gemini
 from app.services.agent_service import create_agent_for_user
+from app.services.agent_tools import build_agent_tools
 from app.memory.summarizer import summarize_user
+
+# Appended to the chat prompt when the agent has live Gmail/Calendar tools, so
+# it reaches for real data instead of inventing email/event details.
+_TOOL_SYSTEM_NOTE = (
+    "\n\nYou have live, authorized access to this user's Gmail and Google "
+    "Calendar through tools. When the user asks anything about their email or "
+    "schedule, CALL THE TOOLS to fetch real data before answering — never "
+    "invent email or event details. Summarize tool results conversationally."
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -72,7 +82,17 @@ def message(request: Request, body: ChatMessageIn, background_tasks: BackgroundT
 
     ctx = build_agent_context(db, agent)
     prompt = CHAT_CONVERSATION.format(user_message=text, **ctx)
-    reply = (gemini.generate(prompt, response_format="text") or "").strip()
+
+    # If the user has connected Gmail/Calendar, hand the agent the tool layer so
+    # it can act on real inbox/schedule data autonomously.
+    tools = build_agent_tools(db, user)
+    if tools:
+        reply = (
+            gemini.generate_with_tools(prompt + _TOOL_SYSTEM_NOTE, tools, hint=text)
+            or ""
+        ).strip()
+    else:
+        reply = (gemini.generate(prompt, response_format="text") or "").strip()
     if not reply:
         reply = "I'm here, but I couldn't form a response just now. Try again?"
 
