@@ -7,6 +7,7 @@ import { integrationsApi } from "@/api/integrations";
 import type { IntegrationStatus } from "@/api/types";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
 import { FollowButton } from "@/components/social/FollowButton";
+import { CloneConfirmModal } from "@/components/marketplace/CloneConfirmModal";
 import { pushToast } from "@/lib/toast";
 
 const STORAGE_KEY = "axolot_onboarding_v2";
@@ -58,6 +59,7 @@ export function OnboardingPage() {
   const [featured, setFeatured] = useState<SocialAgentCard[] | null>(null);
   const [templates, setTemplates] = useState<MarketplaceTemplate[] | null>(null);
   const [cloningId, setCloningId] = useState<string | null>(null);
+  const [pendingClone, setPendingClone] = useState<MarketplaceTemplate | null>(null);
   const [finishing, setFinishing] = useState(false);
 
   // Seed the step-1 fields from the agent auto-created at sign-in.
@@ -143,12 +145,15 @@ export function OnboardingPage() {
     }
   };
 
-  const cloneTemplate = async (t: MarketplaceTemplate) => {
-    if (cloningId) return;
-    setCloningId(t.id);
+  // Two-step clone: tile click opens the confirm modal; only
+  // "Replace my agent" actually fires the POST /clone.
+  const confirmCloneTemplate = async () => {
+    if (!pendingClone || cloningId) return;
+    setCloningId(pendingClone.id);
     try {
-      await api.cloneTemplate(t.id);
-      pushToast(`Your agent is now ${t.name}.`, "success");
+      await api.cloneTemplate(pendingClone.id);
+      pushToast(`Your agent is now ${pendingClone.name}.`, "success");
+      setPendingClone(null);
       await refreshAgent();
     } catch {
       /* toasted by api client */
@@ -398,7 +403,7 @@ export function OnboardingPage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => cloneTemplate(t)}
+                      onClick={() => setPendingClone(t)}
                       disabled={cloningId === t.id}
                       className="btn-primary text-xs py-1.5 px-3"
                       style={{ opacity: cloningId === t.id ? 0.6 : 1 }}
@@ -425,6 +430,16 @@ export function OnboardingPage() {
               Back
             </button>
           </div>
+        )}
+
+        {pendingClone && (
+          <CloneConfirmModal
+            templateId={pendingClone.id}
+            templateName={pendingClone.name}
+            busy={cloningId === pendingClone.id}
+            onCancel={() => cloningId || setPendingClone(null)}
+            onConfirm={confirmCloneTemplate}
+          />
         )}
       </div>
     </div>

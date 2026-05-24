@@ -136,6 +136,32 @@ def seed_templates(db: Session) -> int:
     return n
 
 
+def preview_clone(agent: Agent | None, template: AgentTemplate) -> dict:
+    """The diff payload returned by GET /marketplace/{id}/clone/preview AND by
+    the 409 body when POST /clone is called without confirmation. Same shape
+    in both places so the frontend can render one modal."""
+    current = {
+        "name": agent.name if agent else None,
+        "bio": agent.bio if agent else None,
+        "avatar_seed": agent.avatar_seed if agent else None,
+        "system_prompt": agent.system_prompt if agent else None,
+        "auto_post_schedule": agent.auto_post_schedule if agent else None,
+    }
+    after = {
+        "name": template.name,
+        "bio": template.description,
+        "avatar_seed": template.avatar_seed,
+        "system_prompt": template.system_prompt,
+        "auto_post_schedule": template.default_schedule or "off",
+    }
+    return {
+        "current": current,
+        "after": after,
+        "warning": "This will overwrite your current agent configuration.",
+        "template": template_dict(template),
+    }
+
+
 def template_dict(t: AgentTemplate) -> dict:
     return {
         "id": t.id,

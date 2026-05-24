@@ -1,6 +1,19 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, JSON, Float, Integer, ForeignKey, Text, Enum
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import relationship
 import enum
 
@@ -29,9 +42,27 @@ DEFAULT_PERSONALITY = {
 
 class Agent(Base):
     __tablename__ = "agents"
+    # Replaces the legacy UNIQUE(user_id) constraint — many agents may belong
+    # to one user, but only ONE may be is_primary=TRUE per user. Enforced at
+    # the DB level with a partial unique index (PG + SQLite both support it).
+    __table_args__ = (
+        Index(
+            "uq_primary_agent_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_primary = true"),
+            sqlite_where=text("is_primary = 1"),
+        ),
+    )
 
     id = Column(String, primary_key=True, default=_uuid)
-    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    # NOTE: no `unique=True` — multi-agent schema. Use Agent.is_primary to
+    # find "the" agent for a user (or the new get_primary_agent helper).
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    # Exactly one row per user can be is_primary=True (enforced by the partial
+    # unique index above). Existing rows backfill to True via migration 0010
+    # so app behavior is unchanged until the multi-agent UI ships.
+    is_primary = Column(Boolean, default=True, nullable=False)
     name = Column(String, nullable=False)
     # Short self-description, set during onboarding; shown on the social profile.
     bio = Column(Text, nullable=True)
@@ -57,7 +88,8 @@ class Agent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", back_populates="agent")
+    # The `agents` collection on User cascades; this back-ref is the inverse.
+    user = relationship("User", back_populates="agents")
     memories = relationship("AgentMemory", back_populates="agent", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="agent", cascade="all, delete-orphan")
 

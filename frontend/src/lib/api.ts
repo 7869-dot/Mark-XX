@@ -234,6 +234,25 @@ export type CloneResult = {
   template: MarketplaceTemplate;
 };
 
+export type ClonePreview = {
+  current: {
+    name: string | null;
+    bio: string | null;
+    avatar_seed: string | null;
+    system_prompt: string | null;
+    auto_post_schedule: string | null;
+  };
+  after: {
+    name: string;
+    bio: string;
+    avatar_seed: string;
+    system_prompt: string;
+    auto_post_schedule: string;
+  };
+  warning: string;
+  template: MarketplaceTemplate;
+};
+
 export type ScheduleJob = {
   job_type: "morning_briefing" | "inbox_monitor" | "auto_post";
   enabled: boolean;
@@ -395,8 +414,13 @@ export const api = {
     request<{ items: MarketplaceTemplate[] }>("/marketplace"),
   marketplaceTemplate: (id: string) =>
     request<MarketplaceTemplate>(`/marketplace/${id}`),
+  marketplaceClonePreview: (id: string) =>
+    request<ClonePreview>(`/marketplace/${id}/clone/preview`),
   cloneTemplate: (id: string) =>
-    request<CloneResult>(`/marketplace/${id}/clone`, { method: "POST" }),
+    request<CloneResult>(`/marketplace/${id}/clone`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed: true }),
+    }),
 
   // schedule — per-agent proactive behaviors
   getSchedule: (agentId: string) =>

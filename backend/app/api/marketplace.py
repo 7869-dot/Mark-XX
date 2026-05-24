@@ -1,24 +1,42 @@
-"""Marketplace endpoints: browse templates and clone one onto your agent.
+"""Marketplace endpoints: browse templates, preview a clone, and execute it.
 
-Templates are world-readable (no auth needed to GET) — they are public
-catalogue rows. POST /marketplace/{id}/clone requires auth and re-themes the
-caller's own agent.
+Templates are world-readable (no auth needed to GET the catalogue). The
+clone flow is two-step: GET /clone/preview shows the diff, then
+POST /clone with `{ "confirmed": true }` actually applies it. Calling
+POST without confirmation returns 409 with the same preview payload so a
+client that lost state can still recover.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.envelope import envelope
 from app.core.db import get_db
-from app.core.ratelimit import limiter
 from app.core.security import get_current_user
 from app.models import AgentTemplate, User
+from app.services.agent_service import get_primary_agent
 from app.services.marketplace import (
     clone_to_user_agent,
     list_templates,
+    preview_clone,
     template_dict,
 )
 
 router = APIRouter(tags=["marketplace"])
+
+
+class CloneRequest(BaseModel):
+    confirmed: bool | None = None
+
+
+def _require_template(db: Session, template_id: str) -> AgentTemplate:
+    t = db.query(AgentTemplate).filter(AgentTemplate.id == template_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return t
 
 
 @router.get("/marketplace")
@@ -29,26 +47,52 @@ def get_marketplace(db: Session = Depends(get_db)):
 
 @router.get("/marketplace/{template_id}")
 def get_marketplace_template(template_id: str, db: Session = Depends(get_db)):
-    t = db.query(AgentTemplate).filter(AgentTemplate.id == template_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Template not found")
-    return envelope(template_dict(t))
+    return envelope(template_dict(_require_template(db, template_id)))
+
+
+@router.get("/marketplace/{template_id}/clone/preview")
+def preview_marketplace_clone(
+    template_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Two-column diff: current agent vs what cloning will set. Drives the
+    confirmation modal — same payload the 409 from POST /clone returns."""
+    t = _require_template(db, template_id)
+    agent = get_primary_agent(db, user.id)
+    return envelope(preview_clone(agent, t), agent_id=agent.id if agent else None)
 
 
 @router.post("/marketplace/{template_id}/clone")
 def clone_marketplace_template(
     template_id: str,
+    payload: CloneRequest = Body(default_factory=CloneRequest),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Apply this template to the calling user's agent and increment clone_count.
+    """Apply this template to the calling user's primary agent.
 
-    The agent is re-themed in place — schema is one-agent-per-user — so the
-    user's social graph (followers, posts, history) is preserved.
+    Requires an explicit `{ "confirmed": true }` body. Without it, returns
+    409 with the same preview payload — so a client that just lost state
+    has the same data it would have shown in its modal.
     """
-    t = db.query(AgentTemplate).filter(AgentTemplate.id == template_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Template not found")
+    t = _require_template(db, template_id)
+
+    if not payload.confirmed:
+        agent = get_primary_agent(db, user.id)
+        body = {
+            "success": False,
+            "data": None,
+            "error": "confirm_required",
+            "message": "Confirm required — send { confirmed: true } to proceed",
+            "code": "confirm_required",
+            "preview": preview_clone(agent, t),
+            "meta": {
+                "agent_id": agent.id if agent else None,
+            },
+        }
+        return JSONResponse(status_code=409, content=body)
+
     agent = clone_to_user_agent(db, user, t)
     return envelope(
         {

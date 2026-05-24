@@ -33,5 +33,20 @@ class User(Base):
     gmail_connected = Column(Boolean, default=False)
     calendar_connected = Column(Boolean, default=False)
 
-    agent = relationship("Agent", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    # Multi-agent schema: User.agents holds the full collection (cascade lives
+    # here), while User.agent is a read-only view onto the single is_primary
+    # row — keeps every `user.agent` callsite working without code changes,
+    # but the schema can grow into a true multi-agent product cleanly.
+    agents = relationship(
+        "Agent",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    agent = relationship(
+        "Agent",
+        primaryjoin="and_(User.id == Agent.user_id, Agent.is_primary == True)",
+        foreign_keys="Agent.user_id",
+        uselist=False,
+        viewonly=True,
+    )
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")

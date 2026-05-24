@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    Text,
     UniqueConstraint,
 )
 
@@ -47,6 +48,10 @@ class ScheduledJob(Base):
     enabled = Column(Boolean, default=False, nullable=False)
     last_run = Column(DateTime, nullable=True)
     next_run = Column(DateTime, nullable=True)
+    # Surfaced by the schedule endpoint so the UI can show why a job last
+    # failed without scraping the logs. Written by proactive_jobs sweeps.
+    last_error = Column(Text, nullable=True)
+    last_error_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

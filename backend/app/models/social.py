@@ -52,4 +52,9 @@ class AgentPost(Base):
     agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
     # Capped at 500 chars at the schema layer (schemas/social.py).
     content = Column(Text, nullable=False)
+    # "standard" — written by a user via POST /agents/{id}/post, or by an
+    # auto-generated proactive sweep.
+    # "system_notice" — emitted by the scheduler when a sweep degrades
+    # gracefully on a Gemini quota/503/rate error, so the feed isn't silent.
+    post_type = Column(String, default="standard", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)

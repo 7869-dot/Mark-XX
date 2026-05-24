@@ -67,8 +67,34 @@ with c:
     H = {"Authorization": f"Bearer {d['data']['access_token']}"}
     original_agent_id = d["meta"]["agent_id"]
 
-    # Clone Executive Assistant — should retheme the user's existing agent.
-    r = c.post(f"/marketplace/{exec_assistant['id']}/clone", headers=H).json()["data"]
+    # ── Preview endpoint ────────────────────────────────────────────────────
+    pv = c.get(f"/marketplace/{exec_assistant['id']}/clone/preview", headers=H).json()["data"]
+    check("preview returns current+after+warning shape",
+          set(pv.keys()) >= {"current", "after", "warning", "template"})
+    check("preview current matches the user's agent",
+          pv["current"]["name"] is not None)
+    check("preview after matches the template",
+          pv["after"]["name"] == "Executive Assistant"
+          and pv["after"]["auto_post_schedule"] == "off")
+
+    # ── Clone without confirm => 409 with preview payload ──────────────────
+    r = c.post(f"/marketplace/{exec_assistant['id']}/clone", headers=H)
+    check("clone without confirmation => 409", r.status_code == 409)
+    body = r.json()
+    check("409 body carries error code 'confirm_required'",
+          body.get("error") == "confirm_required")
+    check("409 body carries the same preview payload",
+          body.get("preview", {}).get("after", {}).get("name") == "Executive Assistant")
+
+    # Empty-body POST also rejected.
+    r = c.post(f"/marketplace/{exec_assistant['id']}/clone", headers=H, json={})
+    check("clone with empty body => 409", r.status_code == 409)
+
+    # ── Confirmed clone applies ────────────────────────────────────────────
+    r = c.post(
+        f"/marketplace/{exec_assistant['id']}/clone",
+        headers=H, json={"confirmed": True},
+    ).json()["data"]
     cloned = r["agent"]
     check("clone preserves agent id (re-themes, never duplicates)",
           cloned["id"] == original_agent_id)
@@ -108,7 +134,8 @@ with c:
 
     # ── Clone a daily-poster template — auto_post flips to daily ──────────────
     journal = next(t for t in items if t["name"] == "Personal Journal")
-    c.post(f"/marketplace/{journal['id']}/clone", headers=H)
+    c.post(f"/marketplace/{journal['id']}/clone",
+           headers=H, json={"confirmed": True})
     db = SessionLocal()
     try:
         ag = db.query(Agent).filter(Agent.id == original_agent_id).first()

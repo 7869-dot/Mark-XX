@@ -9,6 +9,15 @@ Three jobs, all gated by per-agent `scheduled_jobs.enabled`:
 
 Every Gemini call here routes through services.gemini.generate_for_agent so the
 agent's persistent voice (bio + system_prompt + personality) is injected.
+
+Resilience contract (Hardening sprint):
+- Each sweep wraps its outer body and every per-agent iteration in
+  try/except so one agent's failure never aborts the rest.
+- Failures stamp last_error / last_error_at on the relevant scheduled_jobs
+  row and log via logger.error(..., exc_info=True).
+- Gemini quota / 503 / rate-limit failures degrade gracefully: instead of
+  silence, the agent posts a `post_type="system_notice"` placeholder so
+  the user sees something in the feed and knows it'll retry next run.
 """
 from __future__ import annotations
 
@@ -16,9 +25,11 @@ import json
 from collections import Counter
 from datetime import datetime, timedelta
 
+from sqlalchemy.orm import Session
+
 from app.core.db import SessionLocal
 from app.core.logging import get_logger, log_event
-from app.models import Agent, AgentAlert, AgentPost
+from app.models import Agent, AgentAlert, AgentPost, ScheduledJob
 from app.models.agent import AgentMemory, AgentMemoryType
 from app.services import calendar_service, gmail_service
 from app.services.gemini import generate_for_agent
@@ -40,25 +51,93 @@ VIP_MIN_THREADS = 5             # contacts you've gotten >=5 messages from are "
 URGENT_KEYWORDS = ("urgent", "asap", "today", "deadline")
 POST_MAX_CHARS = 500            # mirror the agent_posts schema cap
 
+# Substrings that mark a transient Gemini-side failure where the right move is
+# a "we'll retry next run" notice, not bubbling the exception. Matched against
+# the exception's repr/str — works for both the typed
+# google.api_core.exceptions.GoogleAPIError family and any wrapper.
+_GEMINI_TRANSIENT_MARKERS = ("quota", "503", "rate", "ResourceExhausted",
+                             "ServiceUnavailable", "DeadlineExceeded")
+
+SYSTEM_NOTICE_TEXT = (
+    "⚠ Your agent couldn't post this morning due to a temporary error. "
+    "It will retry next scheduled run."
+)
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────
-def _post(db, agent: Agent, content: str) -> AgentPost:
-    """Drop a post on the agent's feed — same shape as POST /agents/{id}/post."""
-    post = AgentPost(agent_id=agent.id, content=content[:POST_MAX_CHARS].strip())
-    db.add(post)
-    # Mirror the post into agent memory so it informs future voice — Layer 4 of
-    # the memory pipeline (post_history).
-    db.add(
-        AgentMemory(
-            agent_id=agent.id,
-            memory_type=AgentMemoryType.post_history,
-            content=f"[posted] {content[:300]}",
-            importance_score=0.5,
+def _looks_like_gemini_transient(exc: BaseException) -> bool:
+    """True for the kind of Gemini error worth degrading-with-a-notice on."""
+    try:
+        from google.api_core import exceptions as gae  # type: ignore
+
+        if isinstance(exc, gae.GoogleAPIError):
+            return True
+    except ImportError:  # google libs not installed in test/stub mode
+        pass
+    msg = f"{type(exc).__name__}: {exc}"
+    return any(m.lower() in msg.lower() for m in _GEMINI_TRANSIENT_MARKERS)
+
+
+def _record_sweep_error(db: Session, agent_id: str, job_type: str, exc: BaseException) -> None:
+    """Stamp the error onto the scheduled_jobs row. Best-effort — never raises."""
+    try:
+        row = (
+            db.query(ScheduledJob)
+            .filter(
+                ScheduledJob.agent_id == agent_id,
+                ScheduledJob.job_type == job_type,
+            )
+            .first()
         )
+        if row:
+            row.last_error = f"{type(exc).__name__}: {exc}"[:1000]
+            row.last_error_at = datetime.utcnow()
+            db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+
+def _post(
+    db: Session,
+    agent: Agent,
+    content: str,
+    *,
+    post_type: str = "standard",
+    record_memory: bool = True,
+) -> AgentPost:
+    """Drop a post on the agent's feed — same shape as POST /agents/{id}/post.
+
+    `record_memory=False` for system notices, so the agent's voice memory
+    doesn't get polluted with "[posted] couldn't post".
+    """
+    post = AgentPost(
+        agent_id=agent.id,
+        content=content[:POST_MAX_CHARS].strip(),
+        post_type=post_type,
     )
+    db.add(post)
+    if record_memory:
+        db.add(
+            AgentMemory(
+                agent_id=agent.id,
+                memory_type=AgentMemoryType.post_history,
+                content=f"[posted] {content[:300]}",
+                importance_score=0.5,
+            )
+        )
     db.commit()
     db.refresh(post)
     return post
+
+
+def _post_system_notice(db: Session, agent: Agent) -> None:
+    """Best-effort placeholder when Gemini is down. Failures here are
+    swallowed silently — we already logged the original exception."""
+    try:
+        _post(db, agent, SYSTEM_NOTICE_TEXT, post_type="system_notice",
+              record_memory=False)
+    except Exception:  # noqa: BLE001
+        db.rollback()
 
 
 def _run(job_id: str, fn) -> None:
@@ -72,6 +151,24 @@ def _run(job_id: str, fn) -> None:
             log_event(logger, "job_done", job=job_id)
         except Exception as exc:  # noqa: BLE001
             log_event(logger, "job_error", job=job_id, error=str(exc))
+            logger.error(f"[{job_id}] sweep aborted: {exc}", exc_info=True)
+
+
+def _handle_agent_failure(
+    db: Session,
+    agent: Agent,
+    job_type: str,
+    sweep_name: str,
+    exc: BaseException,
+) -> None:
+    """One agent's iteration failed. Log, stamp, and (if it's a Gemini
+    transient) post a system_notice so the user isn't met with silence."""
+    logger.error(
+        f"[{sweep_name}] agent_id={agent.id} failed: {exc}", exc_info=True
+    )
+    _record_sweep_error(db, agent.id, job_type, exc)
+    if _looks_like_gemini_transient(exc):
+        _post_system_notice(db, agent)
 
 
 # ── Morning briefing ────────────────────────────────────────────────────────
@@ -83,47 +180,62 @@ def morning_briefing_post():
     def _do():
         db = SessionLocal()
         try:
-            for agent in enabled_agents_for(db, JOB_MORNING_BRIEFING):
-                user = agent.user
-                if not user or not (user.gmail_connected or user.calendar_connected):
-                    continue
-                events = (
-                    calendar_service.list_events(db, user.id, days_ahead=1, max_results=10)
-                    if user.calendar_connected
-                    else []
+            try:
+                agents = enabled_agents_for(db, JOB_MORNING_BRIEFING)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"[morning_briefing_post] enabled_agents lookup failed: {exc}",
+                    exc_info=True,
                 )
-                emails = (
-                    gmail_service.list_emails(
-                        db, user.id, max_results=5, unread_only=True
+                return
+            for agent in agents:
+                try:
+                    user = agent.user
+                    if not user or not (user.gmail_connected or user.calendar_connected):
+                        continue
+                    events = (
+                        calendar_service.list_events(db, user.id, days_ahead=1, max_results=10)
+                        if user.calendar_connected
+                        else []
                     )
-                    if user.gmail_connected
-                    else []
-                )
-                if not events and not emails:
-                    continue
-                email_brief = [
-                    {
-                        "subject": e["subject"],
-                        "from": e["sender"],
-                        "snippet": e["snippet"][:140],
-                    }
-                    for e in emails
-                ]
-                instruction = (
-                    "Compose a short morning briefing post (3-4 sentences) for "
-                    f"{user.name}, written in your own voice as their agent. "
-                    "Weave today's calendar and the most important unread email "
-                    "into one natural paragraph — not a list. Be direct, not "
-                    "cheerful.\n\n"
-                    f"Today's calendar: {json.dumps(events)}\n\n"
-                    f"Top unread emails: {json.dumps(email_brief)}"
-                )
-                text = (generate_for_agent(db, agent, instruction) or "").strip()
-                if not text:
-                    continue
-                _post(db, agent, text)
-                mark_ran(db, agent.id, JOB_MORNING_BRIEFING)
-                log_event(logger, "morning_briefing_posted", agent_id=agent.id)
+                    emails = (
+                        gmail_service.list_emails(
+                            db, user.id, max_results=5, unread_only=True
+                        )
+                        if user.gmail_connected
+                        else []
+                    )
+                    if not events and not emails:
+                        continue
+                    email_brief = [
+                        {
+                            "subject": e["subject"],
+                            "from": e["sender"],
+                            "snippet": e["snippet"][:140],
+                        }
+                        for e in emails
+                    ]
+                    instruction = (
+                        "Compose a short morning briefing post (3-4 sentences) for "
+                        f"{user.name}, written in your own voice as their agent. "
+                        "Weave today's calendar and the most important unread email "
+                        "into one natural paragraph — not a list. Be direct, not "
+                        "cheerful.\n\n"
+                        f"Today's calendar: {json.dumps(events)}\n\n"
+                        f"Top unread emails: {json.dumps(email_brief)}"
+                    )
+                    text = (generate_for_agent(db, agent, instruction) or "").strip()
+                    if not text:
+                        continue
+                    _post(db, agent, text)
+                    mark_ran(db, agent.id, JOB_MORNING_BRIEFING)
+                    log_event(logger, "morning_briefing_posted", agent_id=agent.id)
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    _handle_agent_failure(
+                        db, agent, JOB_MORNING_BRIEFING,
+                        "morning_briefing_post", exc,
+                    )
         finally:
             db.close()
 
@@ -163,74 +275,85 @@ def inbox_monitor_sweep():
     def _do():
         db = SessionLocal()
         try:
-            for agent in enabled_agents_for(db, JOB_INBOX_MONITOR):
-                user = agent.user
-                if not user or not user.gmail_connected:
-                    continue
-                # Recent window — enough to derive VIPs AND surface fresh alerts.
-                recent = gmail_service.list_emails(db, user.id, max_results=40)
-                vips = _vip_senders(recent)
-                unread = [e for e in recent if not e.get("is_read")]
-                if not unread:
-                    continue
-
-                alerted: list[dict] = []
-                for em in unread[:10]:
-                    is_urg, alert_type = _is_urgent(em, vips)
-                    if not is_urg:
+            try:
+                agents = enabled_agents_for(db, JOB_INBOX_MONITOR)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"[inbox_monitor_sweep] enabled_agents lookup failed: {exc}",
+                    exc_info=True,
+                )
+                return
+            for agent in agents:
+                try:
+                    user = agent.user
+                    if not user or not user.gmail_connected:
                         continue
-                    # Dedupe via the unique (agent_id, message_id) constraint.
-                    existing = (
-                        db.query(AgentAlert)
-                        .filter(
-                            AgentAlert.agent_id == agent.id,
-                            AgentAlert.message_id == em["id"],
-                        )
-                        .first()
-                    )
-                    if existing:
+                    recent = gmail_service.list_emails(db, user.id, max_results=40)
+                    vips = _vip_senders(recent)
+                    unread = [e for e in recent if not e.get("is_read")]
+                    if not unread:
                         continue
-                    db.add(
-                        AgentAlert(
-                            agent_id=agent.id,
-                            message_id=em["id"],
-                            alert_type=alert_type,
-                        )
-                    )
-                    alerted.append({**em, "alert_type": alert_type})
-                if not alerted:
-                    continue
-                db.commit()
 
-                # One feed post per sweep summarises everything new — never a
-                # post per email, that would spam the feed.
-                if len(alerted) == 1:
-                    em = alerted[0]
-                    tag = "VIP" if em["alert_type"] == "vip_email" else "Urgent"
-                    instruction = (
-                        f"In one short sentence as {user.name}'s agent, flag this "
-                        f"newly-arrived {tag} email — what it is and who from. No "
-                        f"preamble.\n\nEmail: from {em['sender']} <{em['sender_email']}>, "
-                        f"subject '{em['subject']}'."
+                    alerted: list[dict] = []
+                    for em in unread[:10]:
+                        is_urg, alert_type = _is_urgent(em, vips)
+                        if not is_urg:
+                            continue
+                        existing = (
+                            db.query(AgentAlert)
+                            .filter(
+                                AgentAlert.agent_id == agent.id,
+                                AgentAlert.message_id == em["id"],
+                            )
+                            .first()
+                        )
+                        if existing:
+                            continue
+                        db.add(
+                            AgentAlert(
+                                agent_id=agent.id,
+                                message_id=em["id"],
+                                alert_type=alert_type,
+                            )
+                        )
+                        alerted.append({**em, "alert_type": alert_type})
+                    if not alerted:
+                        continue
+                    db.commit()
+
+                    if len(alerted) == 1:
+                        em = alerted[0]
+                        tag = "VIP" if em["alert_type"] == "vip_email" else "Urgent"
+                        instruction = (
+                            f"In one short sentence as {user.name}'s agent, flag this "
+                            f"newly-arrived {tag} email — what it is and who from. "
+                            f"No preamble.\n\nEmail: from {em['sender']} "
+                            f"<{em['sender_email']}>, subject '{em['subject']}'."
+                        )
+                    else:
+                        summary = "\n".join(
+                            f"- {em['alert_type']}: '{em['subject']}' from {em['sender']}"
+                            for em in alerted
+                        )
+                        instruction = (
+                            f"In one short paragraph as {user.name}'s agent, flag "
+                            f"these newly-arrived urgent/VIP emails. Keep it under "
+                            f"80 words.\n\n{summary}"
+                        )
+                    text = (generate_for_agent(db, agent, instruction) or "").strip()
+                    if text:
+                        _post(db, agent, text)
+                        log_event(
+                            logger, "inbox_monitor_posted",
+                            agent_id=agent.id, alerts=len(alerted),
+                        )
+                    mark_ran(db, agent.id, JOB_INBOX_MONITOR)
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    _handle_agent_failure(
+                        db, agent, JOB_INBOX_MONITOR,
+                        "inbox_monitor_sweep", exc,
                     )
-                else:
-                    summary = "\n".join(
-                        f"- {em['alert_type']}: '{em['subject']}' from {em['sender']}"
-                        for em in alerted
-                    )
-                    instruction = (
-                        f"In one short paragraph as {user.name}'s agent, flag these "
-                        f"newly-arrived urgent/VIP emails. Keep it under 80 words.\n\n"
-                        f"{summary}"
-                    )
-                text = (generate_for_agent(db, agent, instruction) or "").strip()
-                if text:
-                    _post(db, agent, text)
-                    log_event(
-                        logger, "inbox_monitor_posted",
-                        agent_id=agent.id, alerts=len(alerted),
-                    )
-                mark_ran(db, agent.id, JOB_INBOX_MONITOR)
         finally:
             db.close()
 
@@ -246,38 +369,51 @@ def auto_post_sweep():
     def _do():
         db = SessionLocal()
         try:
+            try:
+                agents = enabled_agents_for(db, JOB_AUTO_POST)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"[auto_post_sweep] enabled_agents lookup failed: {exc}",
+                    exc_info=True,
+                )
+                return
             today = datetime.utcnow()
-            for agent in enabled_agents_for(db, JOB_AUTO_POST):
-                if not auto_post_should_run_today(
-                    agent.auto_post_schedule or "off", today
-                ):
-                    continue
-                # Recent posts inform the voice but we don't want to retread them.
-                recent = (
-                    db.query(AgentPost)
-                    .filter(AgentPost.agent_id == agent.id)
-                    .order_by(AgentPost.created_at.desc())
-                    .limit(5)
-                    .all()
-                )
-                recent_text = (
-                    "\n".join(f"- {p.content}" for p in recent)
-                    if recent
-                    else "(no prior posts)"
-                )
-                instruction = (
-                    "Write one fresh post (2-4 sentences, under 500 chars) for "
-                    "your feed, in your own voice. The topic should reflect your "
-                    "bio and your user's recent interests. Don't repeat anything "
-                    "from your last posts. No hashtags, no quotes around the post.\n\n"
-                    f"Your last posts:\n{recent_text}"
-                )
-                text = (generate_for_agent(db, agent, instruction) or "").strip()
-                if not text:
-                    continue
-                _post(db, agent, text)
-                mark_ran(db, agent.id, JOB_AUTO_POST)
-                log_event(logger, "auto_post_posted", agent_id=agent.id)
+            for agent in agents:
+                try:
+                    if not auto_post_should_run_today(
+                        agent.auto_post_schedule or "off", today
+                    ):
+                        continue
+                    recent = (
+                        db.query(AgentPost)
+                        .filter(AgentPost.agent_id == agent.id)
+                        .order_by(AgentPost.created_at.desc())
+                        .limit(5)
+                        .all()
+                    )
+                    recent_text = (
+                        "\n".join(f"- {p.content}" for p in recent)
+                        if recent
+                        else "(no prior posts)"
+                    )
+                    instruction = (
+                        "Write one fresh post (2-4 sentences, under 500 chars) for "
+                        "your feed, in your own voice. The topic should reflect "
+                        "your bio and your user's recent interests. Don't repeat "
+                        "anything from your last posts. No hashtags, no quotes "
+                        f"around the post.\n\nYour last posts:\n{recent_text}"
+                    )
+                    text = (generate_for_agent(db, agent, instruction) or "").strip()
+                    if not text:
+                        continue
+                    _post(db, agent, text)
+                    mark_ran(db, agent.id, JOB_AUTO_POST)
+                    log_event(logger, "auto_post_posted", agent_id=agent.id)
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    _handle_agent_failure(
+                        db, agent, JOB_AUTO_POST, "auto_post_sweep", exc,
+                    )
         finally:
             db.close()
 

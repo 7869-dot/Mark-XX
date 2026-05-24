@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from app.core.db import SessionLocal
 from app.core.logging import get_logger, log_event
-from app.models import Agent, ChatHistory
+from app.models import ChatHistory
+from app.services.agent_service import get_primary_agent
 
 logger = get_logger("axolot.personality_tracker")
 
@@ -36,7 +37,7 @@ def refresh_personality_if_due(user_id: str) -> None:
         count = user_turn_count(db, user_id)
         if count == 0 or count % REFRESH_EVERY != 0:
             return
-        agent = db.query(Agent).filter(Agent.user_id == user_id).first()
+        agent = get_primary_agent(db, user_id)
         if not agent:
             return
         from app.services.memory_indexer import mine_user

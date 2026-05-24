@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type MarketplaceTemplate } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
+import { CloneConfirmModal } from "@/components/marketplace/CloneConfirmModal";
 import { pushToast } from "@/lib/toast";
 
 const CATEGORIES = ["All", "Productivity", "Social", "Research", "Finance"] as const;
@@ -21,6 +22,9 @@ export function MarketplacePage() {
   const [items, setItems] = useState<MarketplaceTemplate[] | null>(null);
   const [active, setActive] = useState<Category>("All");
   const [cloningId, setCloningId] = useState<string | null>(null);
+  // Two-step clone: a pending template populates the confirm modal,
+  // and only "Replace my agent" actually fires the POST /clone.
+  const [pending, setPending] = useState<MarketplaceTemplate | null>(null);
 
   useEffect(() => {
     api
@@ -35,12 +39,18 @@ export function MarketplacePage() {
     return items.filter((t) => t.category === active);
   }, [items, active]);
 
-  const clone = async (t: MarketplaceTemplate) => {
+  const requestClone = (t: MarketplaceTemplate) => {
     if (cloningId) return;
-    setCloningId(t.id);
+    setPending(t);
+  };
+
+  const confirmClone = async () => {
+    if (!pending || cloningId) return;
+    setCloningId(pending.id);
     try {
-      await api.cloneTemplate(t.id);
-      pushToast(`Your agent is ready — meet ${t.name}.`, "success");
+      await api.cloneTemplate(pending.id);
+      pushToast(`Your agent is ready — meet ${pending.name}.`, "success");
+      setPending(null);
       await refreshAgent();
       navigate("/agent");
     } catch {
@@ -103,10 +113,20 @@ export function MarketplacePage() {
               key={t.id}
               template={t}
               busy={cloningId === t.id}
-              onClone={() => clone(t)}
+              onClone={() => requestClone(t)}
             />
           ))}
         </div>
+      )}
+
+      {pending && (
+        <CloneConfirmModal
+          templateId={pending.id}
+          templateName={pending.name}
+          busy={cloningId === pending.id}
+          onCancel={() => cloningId || setPending(null)}
+          onConfirm={confirmClone}
+        />
       )}
     </div>
   );
