@@ -18,6 +18,7 @@ from app.services import gemini
 from app.services.agent_service import create_agent_for_user
 from app.services.agent_tools import build_agent_tools
 from app.memory.summarizer import summarize_user
+from app.memory.personality_tracker import refresh_personality_if_due
 
 # Appended to the chat prompt when the agent has live Gmail/Calendar tools, so
 # it reaches for real data instead of inventing email/event details.
@@ -101,8 +102,10 @@ def message(request: Request, body: ChatMessageIn, background_tasks: BackgroundT
     db.commit()
     db.refresh(agent_turn)
 
-    # Compress the conversation into ConversationSummary off the response path.
+    # Compress the conversation into ConversationSummary off the response path,
+    # then every 5 user turns also re-derive the long-term UserPersonality.
     background_tasks.add_task(summarize_user, user.id)
+    background_tasks.add_task(refresh_personality_if_due, user.id)
 
     return envelope(
         {"reply": _serialize(agent_turn), "echo": _serialize(user_turn)},
