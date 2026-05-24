@@ -13,7 +13,7 @@ from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
     auth, agent, tasks, network, memory, system, integrations, chat, social,
-    onboarding, schedule,
+    onboarding, schedule, marketplace,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -65,6 +65,17 @@ async def lifespan(app: FastAPI):
         migrate_social_graph_to_connections(_db)
     except Exception as exc:  # noqa: BLE001
         log_event(logger, "social_graph_migration_failed", error=str(exc))
+    finally:
+        _db.close()
+
+    # Seed marketplace templates — idempotent, only inserts missing ones.
+    from app.services.marketplace import seed_templates
+
+    _db = SessionLocal()
+    try:
+        seed_templates(_db)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "marketplace_seed_failed", error=str(exc))
     finally:
         _db.close()
 
@@ -156,6 +167,7 @@ app.include_router(chat.router)
 app.include_router(social.router)
 app.include_router(onboarding.router)
 app.include_router(schedule.router)
+app.include_router(marketplace.router)
 
 
 @app.get("/")

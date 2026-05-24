@@ -12,6 +12,7 @@ import { NetworkPage } from "@/pages/Network";
 import { DiscoverPage } from "@/pages/Discover";
 import { FeedPage } from "@/pages/Feed";
 import { SocialProfilePage } from "@/pages/SocialProfile";
+import { MarketplacePage } from "@/pages/Marketplace";
 import { TasksPage } from "@/pages/Tasks";
 import { InboxPage } from "@/pages/Inbox";
 import { GmailPage } from "@/pages/Gmail";
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="/discover" element={<DiscoverPage />} />
             <Route path="/feed" element={<FeedPage />} />
             <Route path="/agents/:agentId" element={<SocialProfilePage />} />
+            <Route path="/marketplace" element={<MarketplacePage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/gmail" element={<GmailPage />} />

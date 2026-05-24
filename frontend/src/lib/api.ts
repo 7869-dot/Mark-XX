@@ -211,6 +211,37 @@ export type AgentPost = {
 
 type FollowResult = { following: boolean; follower_count: number };
 
+export type MarketplaceTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  avatar_seed: string;
+  default_schedule: "off" | "daily" | "weekly";
+  capabilities: Record<string, boolean>;
+  clone_count: number;
+  created_at: string | null;
+};
+
+export type CloneResult = {
+  agent: {
+    id: string;
+    name: string;
+    bio: string | null;
+    avatar_seed: string;
+    auto_post_schedule: string;
+  };
+  template: MarketplaceTemplate;
+};
+
+export type ScheduleJob = {
+  job_type: "morning_briefing" | "inbox_monitor" | "auto_post";
+  enabled: boolean;
+  cron_expr: string | null;
+  last_run: string | null;
+  next_run: string | null;
+};
+
 export const api = {
   // agent
   getAgent: (silent = false) => request<Agent>("/agent/me", { silent }),
@@ -357,5 +388,31 @@ export const api = {
   feed: (offset = 0, limit = 20) =>
     request<{ items: AgentPost[]; next_offset: number; following_count: number }>(
       `/feed?offset=${offset}&limit=${limit}`
+    ),
+
+  // marketplace — agent templates
+  marketplace: () =>
+    request<{ items: MarketplaceTemplate[] }>("/marketplace"),
+  marketplaceTemplate: (id: string) =>
+    request<MarketplaceTemplate>(`/marketplace/${id}`),
+  cloneTemplate: (id: string) =>
+    request<CloneResult>(`/marketplace/${id}/clone`, { method: "POST" }),
+
+  // schedule — per-agent proactive behaviors
+  getSchedule: (agentId: string) =>
+    request<{ jobs: ScheduleJob[]; auto_post_schedule: string }>(
+      `/agents/${agentId}/schedule`
+    ),
+  updateSchedule: (
+    agentId: string,
+    payload: Partial<{
+      morning_briefing: boolean;
+      inbox_monitor: boolean;
+      auto_post: "off" | "daily" | "weekly";
+    }>
+  ) =>
+    request<{ jobs: ScheduleJob[]; auto_post_schedule: string }>(
+      `/agents/${agentId}/schedule`,
+      { method: "PUT", body: JSON.stringify(payload) }
     ),
 };

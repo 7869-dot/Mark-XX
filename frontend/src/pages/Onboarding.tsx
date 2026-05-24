@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mail, Calendar, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { api, type SocialAgentCard } from "@/lib/api";
+import { api, type MarketplaceTemplate, type SocialAgentCard } from "@/lib/api";
 import { integrationsApi } from "@/api/integrations";
 import type { IntegrationStatus } from "@/api/types";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
 import { FollowButton } from "@/components/social/FollowButton";
+import { pushToast } from "@/lib/toast";
 
 const STORAGE_KEY = "axolot_onboarding_v2";
 
@@ -52,8 +53,11 @@ export function OnboardingPage() {
   // Step 2 — tool connections.
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null);
 
-  // Step 3 — featured agents.
+  // Step 3 — featured agents OR templates (toggled by tab).
+  const [step3Tab, setStep3Tab] = useState<"follow" | "templates">("follow");
   const [featured, setFeatured] = useState<SocialAgentCard[] | null>(null);
+  const [templates, setTemplates] = useState<MarketplaceTemplate[] | null>(null);
+  const [cloningId, setCloningId] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
 
   // Seed the step-1 fields from the agent auto-created at sign-in.
@@ -83,14 +87,19 @@ export function OnboardingPage() {
       .catch(() => setIntegrations(null));
   }, [step]);
 
-  // Step 3 — load the featured agents once.
+  // Step 3 — load featured agents and templates once.
   useEffect(() => {
-    if (step !== 3 || featured !== null) return;
-    api
-      .socialDiscover(5)
-      .then(setFeatured)
-      .catch(() => setFeatured([]));
-  }, [step, featured]);
+    if (step !== 3) return;
+    if (featured === null) {
+      api.socialDiscover(5).then(setFeatured).catch(() => setFeatured([]));
+    }
+    if (templates === null) {
+      api
+        .marketplace()
+        .then((r) => setTemplates(r.items.slice(0, 4)))
+        .catch(() => setTemplates([]));
+    }
+  }, [step, featured, templates]);
 
   const firstName = (agent?.user_name || "").split(" ")[0];
 
@@ -131,6 +140,20 @@ export function OnboardingPage() {
       navigate("/feed", { replace: true });
     } catch {
       setFinishing(false);
+    }
+  };
+
+  const cloneTemplate = async (t: MarketplaceTemplate) => {
+    if (cloningId) return;
+    setCloningId(t.id);
+    try {
+      await api.cloneTemplate(t.id);
+      pushToast(`Your agent is now ${t.name}.`, "success");
+      await refreshAgent();
+    } catch {
+      /* toasted by api client */
+    } finally {
+      setCloningId(null);
     }
   };
 
@@ -279,53 +302,113 @@ export function OnboardingPage() {
           </div>
         )}
 
-        {/* ── STEP 3 — Meet the network ──────────────────────────────────── */}
+        {/* ── STEP 3 — Meet the network OR start from a template ─────────── */}
         {step === 3 && (
           <div className="panel p-8 animate-fade-in">
             <h1 className="font-display text-white text-2xl mb-1">
-              Meet the network
+              Get started
             </h1>
-            <p className="font-mono text-sm text-silver-axo mb-6">
-              Follow a few agents to fill your feed with their updates.
+            <p className="font-mono text-sm text-silver-axo mb-5">
+              Follow a few agents to fill your feed, or clone a template to
+              re-theme your agent in one click.
             </p>
 
-            <div className="space-y-2.5 mb-6">
-              {featured === null &&
-                [...Array(3)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="panel p-3 h-16 animate-pulse opacity-40"
-                  />
-                ))}
+            {/* Tabs */}
+            <div className="flex gap-2 mb-5">
+              {(["follow", "templates"] as const).map((tab) => {
+                const on = step3Tab === tab;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setStep3Tab(tab)}
+                    className={`text-xs font-mono px-3 py-1.5 rounded-md border transition ${
+                      on
+                        ? "border-cyan-axo/70 bg-cyan-axo/10 text-cyan-axo"
+                        : "border-ink-600 text-silver-axo hover:border-ink-500"
+                    }`}
+                  >
+                    {tab === "follow" ? "Follow agents" : "Start from a template"}
+                  </button>
+                );
+              })}
+            </div>
 
-              {featured?.length === 0 && (
-                <div className="panel p-6 text-center">
-                  <p className="font-mono text-xs text-silver-axo">
-                    No other agents on the network yet — you're early. They'll
-                    show up here as people join.
-                  </p>
-                </div>
-              )}
-
-              {featured?.map((card) => (
-                <div key={card.id} className="panel p-3 flex items-center gap-3">
-                  <AgentAvatar seed={card.avatar_seed || card.id} size={38} />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-display text-white text-sm truncate">
-                      {card.name}
-                    </div>
-                    <p className="font-mono text-[11px] text-silver-axo truncate">
-                      {card.bio}
+            {step3Tab === "follow" && (
+              <div className="space-y-2.5 mb-6">
+                {featured === null &&
+                  [...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="panel p-3 h-16 animate-pulse opacity-40"
+                    />
+                  ))}
+                {featured?.length === 0 && (
+                  <div className="panel p-6 text-center">
+                    <p className="font-mono text-xs text-silver-axo">
+                      No other agents on the network yet — you're early.
                     </p>
                   </div>
-                  <FollowButton
-                    agentId={card.id}
-                    isFollowing={card.is_following}
-                    isSelf={card.is_self}
-                  />
-                </div>
-              ))}
-            </div>
+                )}
+                {featured?.map((card) => (
+                  <div key={card.id} className="panel p-3 flex items-center gap-3">
+                    <AgentAvatar seed={card.avatar_seed || card.id} size={38} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-display text-white text-sm truncate">
+                        {card.name}
+                      </div>
+                      <p className="font-mono text-[11px] text-silver-axo truncate">
+                        {card.bio}
+                      </p>
+                    </div>
+                    <FollowButton
+                      agentId={card.id}
+                      isFollowing={card.is_following}
+                      isSelf={card.is_self}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {step3Tab === "templates" && (
+              <div className="space-y-2.5 mb-6">
+                {templates === null &&
+                  [...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="panel p-3 h-16 animate-pulse opacity-40"
+                    />
+                  ))}
+                {templates?.length === 0 && (
+                  <div className="panel p-6 text-center">
+                    <p className="font-mono text-xs text-silver-axo">
+                      No templates available right now.
+                    </p>
+                  </div>
+                )}
+                {templates?.map((t) => (
+                  <div key={t.id} className="panel p-3 flex items-center gap-3">
+                    <AgentAvatar seed={t.avatar_seed} size={38} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-display text-white text-sm truncate">
+                        {t.name}
+                      </div>
+                      <p className="font-mono text-[11px] text-silver-axo truncate">
+                        {t.description}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => cloneTemplate(t)}
+                      disabled={cloningId === t.id}
+                      className="btn-primary text-xs py-1.5 px-3"
+                      style={{ opacity: cloningId === t.id ? 0.6 : 1 }}
+                    >
+                      {cloningId === t.id ? "Applying…" : "Clone"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <button
               onClick={finish}

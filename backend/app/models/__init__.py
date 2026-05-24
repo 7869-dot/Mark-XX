@@ -11,6 +11,7 @@ from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
 from app.models.integration import WatchedThread
 from app.models.social import AgentFollow, AgentPost
 from app.models.scheduler import ScheduledJob, AgentAlert
+from app.models.marketplace import AgentTemplate
 
 __all__ = [
     "User",
@@ -31,4 +32,5 @@ __all__ = [
     "AgentPost",
     "ScheduledJob",
     "AgentAlert",
+    "AgentTemplate",
 ]
