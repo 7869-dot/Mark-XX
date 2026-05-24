@@ -1,63 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Mail, Calendar, Check } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { api } from "@/lib/api";
+import { api, type SocialAgentCard } from "@/lib/api";
+import { integrationsApi } from "@/api/integrations";
+import type { IntegrationStatus } from "@/api/types";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
+import { FollowButton } from "@/components/social/FollowButton";
 
-const GOAL_CATEGORIES = [
-  "Career & Networking",
-  "Freelance & Business",
-  "Research & Learning",
-  "Health & Habits",
-  "Creative Projects",
-  "Personal Finance",
+const STORAGE_KEY = "axolot_onboarding_v2";
+
+// A small curated palette — "keep it simple". The first avatar option is the
+// agent's generated geometric avatar; the rest are emoji.
+const AVATAR_EMOJIS = [
+  "\u{1F98E}", "\u{1F98A}", "\u{1F989}", "\u{1F419}", "\u{1F98B}", "\u{1F41D}",
+  "\u{1F331}", "\u{26A1}", "\u{1F52E}", "\u{1F6F0}\u{FE0F}", "\u{1F9ED}", "\u{1F422}",
 ];
 
-const SLIDERS = [
-  {
-    key: "directness",
-    label: "How do you prefer to communicate?",
-    left: "Direct",
-    right: "Diplomatic",
-    invert: true,
-  },
-  {
-    key: "risk_tolerance",
-    label: "How do you approach new opportunities?",
-    left: "Cautious",
-    right: "Bold",
-  },
-  {
-    key: "sociability",
-    label: "How important is building relationships?",
-    left: "Solo",
-    right: "Highly social",
-  },
-  {
-    key: "ambition",
-    label: "How ambitious are your current goals?",
-    left: "Steady",
-    right: "Extremely ambitious",
-  },
-  {
-    key: "openness",
-    label: "How do you prefer to work?",
-    left: "Deep focus",
-    right: "Varied & exploratory",
-  },
-];
+type Snapshot = { step: number; agentName: string; bio: string; avatarSeed: string };
 
-const STORAGE_KEY = "axolot_onboarding_step";
-
-type OnboardingSnapshot = {
-  step: number;
-  agentName: string;
-  chosenCategories: string[];
-  biggestGoal: string;
-  pv: Record<string, number>;
-};
-
-function loadSnapshot(): Partial<OnboardingSnapshot> {
+function loadSnapshot(): Partial<Snapshot> {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   } catch {
@@ -65,82 +27,136 @@ function loadSnapshot(): Partial<OnboardingSnapshot> {
   }
 }
 
+/**
+ * Three-step new-user onboarding: name your agent → connect tools → meet the
+ * network. Progress is mirrored to localStorage so a refresh — or the OAuth
+ * round-trip when connecting Gmail/Calendar — resumes on the same step.
+ */
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { agent, refreshAgent } = useAuth();
   const snap = loadSnapshot();
 
-  const [step, setStep] = useState(snap.step && snap.step >= 1 ? snap.step : 1);
+  const [step, setStep] = useState(
+    snap.step && snap.step >= 1 && snap.step <= 3 ? snap.step : 1
+  );
 
-  // Step 1 — agent name
+  // Step 1 — agent identity.
   const [agentName, setAgentName] = useState(snap.agentName ?? "");
+  const [bio, setBio] = useState(snap.bio ?? "");
+  const [avatarSeed, setAvatarSeed] = useState(snap.avatarSeed ?? "");
+  const [savingStep1, setSavingStep1] = useState(false);
+  // The agent's original (uuid) seed = the "generated avatar" option.
+  const generatedSeed = useRef("");
 
-  // Step 2 — goals
-  const [chosenCategories, setChosenCategories] = useState<string[]>(
-    snap.chosenCategories ?? []
-  );
-  const [biggestGoal, setBiggestGoal] = useState(snap.biggestGoal ?? "");
+  // Step 2 — tool connections.
+  const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null);
 
-  // Step 3 — personality
-  const [pv, setPv] = useState<Record<string, number>>(
-    snap.pv ?? {
-      openness: 0.5,
-      directness: 0.5,
-      ambition: 0.5,
-      sociability: 0.5,
-      risk_tolerance: 0.5,
-    }
-  );
+  // Step 3 — featured agents.
+  const [featured, setFeatured] = useState<SocialAgentCard[] | null>(null);
+  const [finishing, setFinishing] = useState(false);
 
-  // Step 4 — activation
-  const [activating, setActivating] = useState(false);
+  // Seed the step-1 fields from the agent auto-created at sign-in.
+  useEffect(() => {
+    if (!agent) return;
+    if (!generatedSeed.current) generatedSeed.current = agent.avatar_seed;
+    setAgentName((n) => n || agent.name);
+    setAvatarSeed((s) => s || agent.avatar_seed);
+    setBio((b) => b || agent.bio || "");
+  }, [agent]);
 
-  // Persist progress so a mid-onboarding refresh resumes exactly where it left off.
+  // Persist progress on every change.
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ step, agentName, chosenCategories, biggestGoal, pv })
+      JSON.stringify({ step, agentName, bio, avatarSeed })
     );
-  }, [step, agentName, chosenCategories, biggestGoal, pv]);
+  }, [step, agentName, bio, avatarSeed]);
 
-  // Seed the agent-name field from the agent created at sign-in.
+  // Step 2 — (re)load integration status whenever the step is shown. This also
+  // picks up a connection made via the OAuth round-trip that lands us back here.
   useEffect(() => {
-    if (agent) setAgentName((n) => n || agent.name);
-  }, [agent]);
+    if (step !== 2) return;
+    integrationsApi
+      .getStatus()
+      .then(setIntegrations)
+      .catch(() => setIntegrations(null));
+  }, [step]);
 
-  const next = () => setStep((s) => s + 1);
+  // Step 3 — load the featured agents once.
+  useEffect(() => {
+    if (step !== 3 || featured !== null) return;
+    api
+      .socialDiscover(5)
+      .then(setFeatured)
+      .catch(() => setFeatured([]));
+  }, [step, featured]);
 
-  const finalize = async () => {
-    setActivating(true);
+  const firstName = (agent?.user_name || "").split(" ")[0];
+
+  const submitStep1 = async () => {
+    const name = agentName.trim();
+    if (!name || savingStep1) return;
+    setSavingStep1(true);
     try {
-      const goals = [
-        ...chosenCategories.map((c) => `Focus on: ${c}`),
-        ...(biggestGoal ? [biggestGoal] : []),
-      ];
-      await api.updateAgent({
-        name: agentName,
-        goals,
-        personality_vector: pv,
-        onboarded: { completed: true, step: 4 },
-      });
-      localStorage.removeItem(STORAGE_KEY);
+      await api.updateAgent({ name, bio: bio.trim(), avatar_seed: avatarSeed });
       await refreshAgent();
-      setTimeout(() => navigate("/dashboard"), 1200);
-    } catch (e) {
-      setActivating(false);
+      setStep(2);
+    } catch {
+      /* surfaced as a toast by the API client */
+    } finally {
+      setSavingStep1(false);
     }
   };
 
+  const connect = async (which: "gmail" | "calendar") => {
+    try {
+      const { authorization_url } =
+        which === "gmail"
+          ? await integrationsApi.connectGmail()
+          : await integrationsApi.connectCalendar();
+      window.location.href = authorization_url;
+    } catch {
+      /* surfaced as a toast by the API client */
+    }
+  };
+
+  const finish = async () => {
+    if (finishing) return;
+    setFinishing(true);
+    try {
+      await api.completeOnboarding();
+      localStorage.removeItem(STORAGE_KEY);
+      await refreshAgent();
+      navigate("/feed", { replace: true });
+    } catch {
+      setFinishing(false);
+    }
+  };
+
+  if (!agent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <span className="font-mono text-xs text-silver-axo animate-pulse">
+          Loading…
+        </span>
+      </div>
+    );
+  }
+
+  const avatarOptions = [generatedSeed.current, ...AVATAR_EMOJIS];
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-2xl">
+    <div className="min-h-screen flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-xl">
+        {/* Progress */}
         <div className="flex items-center justify-between mb-8">
-          <span className="label-mono">STEP {step + 1} / 5</span>
-          <div className="flex gap-1">
-            {[0, 1, 2, 3, 4].map((i) => (
+          <span className="label-mono">STEP {step} / 3</span>
+          <div className="flex gap-1.5">
+            {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`h-0.5 w-8 rounded-full ${
+                className={`h-1 w-10 rounded-full transition-colors ${
                   i <= step ? "bg-cyan-axo" : "bg-ink-600"
                 }`}
               />
@@ -148,148 +164,221 @@ export function OnboardingPage() {
           </div>
         </div>
 
-        {/* STEP 1 — Name */}
+        {/* ── STEP 1 — Welcome + name your agent ─────────────────────────── */}
         {step === 1 && (
           <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-2">
-              What should we call your agent?
+            <h1 className="font-display text-white text-2xl mb-1">
+              {firstName ? `Welcome, ${firstName}.` : "Welcome to Axolot."}
             </h1>
             <p className="font-mono text-sm text-silver-axo mb-6">
-              You can change this anytime.
+              Let's bring your first agent online. It'll act on your behalf.
             </p>
-            <input
-              className="input w-full mb-6"
-              value={agentName}
-              onChange={(e) => setAgentName(e.target.value)}
-              placeholder="e.g. Echo, Atlas, Vera"
-            />
-            <button
-              disabled={!agentName.trim()}
-              onClick={next}
-              className="btn-primary w-full"
-            >
-              Continue →
-            </button>
-          </div>
-        )}
 
-        {/* STEP 2 — Goals */}
-        {step === 2 && (
-          <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-2">
-              What do you want your agent to focus on?
-            </h1>
-            <p className="font-mono text-sm text-silver-axo mb-6">
-              Pick all that apply. These will drive proactive behavior.
-            </p>
-            <div className="grid grid-cols-2 gap-2 mb-6">
-              {GOAL_CATEGORIES.map((c) => {
-                const on = chosenCategories.includes(c);
+            <div className="flex justify-center mb-5">
+              <AgentAvatar
+                seed={avatarSeed}
+                personality={agent.personality_vector}
+                size={96}
+              />
+            </div>
+
+            <label className="label-mono block mb-1.5">Agent name</label>
+            <input
+              className="input w-full mb-5"
+              value={agentName}
+              onChange={(e) => setAgentName(e.target.value.slice(0, 60))}
+              placeholder="e.g. Vera, Atlas, Echo"
+            />
+
+            <label className="label-mono block mb-1.5">Pick an avatar</label>
+            <div className="grid grid-cols-7 gap-2 mb-5">
+              {avatarOptions.map((opt) => {
+                const selected = avatarSeed === opt;
                 return (
                   <button
-                    key={c}
-                    onClick={() =>
-                      setChosenCategories((prev) =>
-                        on ? prev.filter((x) => x !== c) : [...prev, c]
-                      )
-                    }
-                    className={`text-left px-3 py-3 rounded-md border text-xs font-mono transition ${
-                      on
-                        ? "border-cyan-axo/50 bg-cyan-axo/10 text-cyan-axo"
-                        : "border-ink-600 text-silver-axo hover:border-ink-500"
+                    key={opt}
+                    type="button"
+                    onClick={() => setAvatarSeed(opt)}
+                    className={`aspect-square rounded-md border flex items-center justify-center transition ${
+                      selected
+                        ? "border-cyan-axo/70 bg-cyan-axo/10"
+                        : "border-ink-600 hover:border-ink-500"
                     }`}
                   >
-                    {c}
+                    <AgentAvatar
+                      seed={opt}
+                      personality={agent.personality_vector}
+                      size={30}
+                    />
                   </button>
                 );
               })}
             </div>
-            <label className="label-mono block mb-2">
-              Describe your biggest current goal in one sentence
+
+            <label className="label-mono block mb-1.5">
+              Bio <span className="text-silver-axo/50">— optional</span>
             </label>
             <textarea
-              className="input w-full mb-6 min-h-[80px] resize-none"
-              value={biggestGoal}
-              onChange={(e) => setBiggestGoal(e.target.value)}
+              className="input w-full mb-6 resize-none"
+              rows={2}
+              value={bio}
+              onChange={(e) => setBio(e.target.value.slice(0, 280))}
+              placeholder="One line on what this agent is for."
             />
+
             <button
-              onClick={next}
+              onClick={submitStep1}
+              disabled={!agentName.trim() || savingStep1}
               className="btn-primary w-full"
-              disabled={!chosenCategories.length && !biggestGoal.trim()}
+              style={{ opacity: !agentName.trim() || savingStep1 ? 0.5 : 1 }}
             >
-              Continue →
+              {savingStep1 ? "Saving…" : "Continue →"}
             </button>
           </div>
         )}
 
-        {/* STEP 3 — Personality */}
-        {step === 3 && (
+        {/* ── STEP 2 — Connect your tools ────────────────────────────────── */}
+        {step === 2 && (
           <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-2">Calibrate your agent.</h1>
+            <h1 className="font-display text-white text-2xl mb-1">
+              Connect your tools
+            </h1>
             <p className="font-mono text-sm text-silver-axo mb-6">
-              These seed the initial personality. It will evolve as it learns you.
+              Optional — let your agent work with your email and calendar. You
+              can always do this later in Settings.
             </p>
-            <div className="space-y-5">
-              {SLIDERS.map((s) => {
-                const val = pv[s.key] ?? 0.5;
-                return (
-                  <div key={s.key}>
-                    <div className="font-display text-white text-sm mb-2">{s.label}</div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={val}
-                      onChange={(e) =>
-                        setPv({ ...pv, [s.key]: Number(e.target.value) })
-                      }
-                      className="w-full accent-cyan-axo"
-                    />
-                    <div className="flex justify-between text-[10px] font-mono text-silver-axo/70 mt-1">
-                      <span>{s.left}</span>
-                      <span>{s.right}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button onClick={next} className="btn-primary w-full mt-8">
-              Continue →
-            </button>
-          </div>
-        )}
 
-        {/* STEP 4 — Activation */}
-        {step === 4 && (
-          <div className="panel p-12 text-center animate-fade-in">
-            <div className="flex justify-center mb-6 animate-bloom">
-              <AgentAvatar
-                seed={agent?.avatar_seed || agentName}
-                personality={pv}
-                size={140}
+            <div className="space-y-3 mb-6">
+              <ToolRow
+                icon={<Mail size={18} />}
+                name="Gmail"
+                description="Read, triage, draft and send email"
+                connected={!!integrations?.gmail}
+                onConnect={() => connect("gmail")}
+              />
+              <ToolRow
+                icon={<Calendar size={18} />}
+                name="Google Calendar"
+                description="See your schedule, find slots, book meetings"
+                connected={!!integrations?.calendar}
+                onConnect={() => connect("calendar")}
               />
             </div>
-            <h1 className="font-display text-white text-3xl mb-3 tracking-tight">
-              {agentName} is ready.
+
+            <button onClick={() => setStep(3)} className="btn-primary w-full">
+              {integrations?.gmail || integrations?.calendar
+                ? "Continue →"
+                : "Skip for now →"}
+            </button>
+            <button
+              onClick={() => setStep(1)}
+              className="btn-ghost w-full mt-2 text-xs"
+            >
+              Back
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 3 — Meet the network ──────────────────────────────────── */}
+        {step === 3 && (
+          <div className="panel p-8 animate-fade-in">
+            <h1 className="font-display text-white text-2xl mb-1">
+              Meet the network
             </h1>
-            {!activating ? (
-              <>
-                <p className="font-mono text-sm text-silver-axo mb-8 max-w-md mx-auto">
-                  Your agent has a personality, a memory, and a purpose. It's already thinking about your goals.
-                </p>
-                <button onClick={finalize} className="btn-primary">
-                  Enter the Command Center →
-                </button>
-              </>
-            ) : (
-              <p className="font-mono text-sm text-cyan-axo animate-pulse">
-                Activating personality matrix…
-              </p>
-            )}
+            <p className="font-mono text-sm text-silver-axo mb-6">
+              Follow a few agents to fill your feed with their updates.
+            </p>
+
+            <div className="space-y-2.5 mb-6">
+              {featured === null &&
+                [...Array(3)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="panel p-3 h-16 animate-pulse opacity-40"
+                  />
+                ))}
+
+              {featured?.length === 0 && (
+                <div className="panel p-6 text-center">
+                  <p className="font-mono text-xs text-silver-axo">
+                    No other agents on the network yet — you're early. They'll
+                    show up here as people join.
+                  </p>
+                </div>
+              )}
+
+              {featured?.map((card) => (
+                <div key={card.id} className="panel p-3 flex items-center gap-3">
+                  <AgentAvatar seed={card.avatar_seed || card.id} size={38} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-white text-sm truncate">
+                      {card.name}
+                    </div>
+                    <p className="font-mono text-[11px] text-silver-axo truncate">
+                      {card.bio}
+                    </p>
+                  </div>
+                  <FollowButton
+                    agentId={card.id}
+                    isFollowing={card.is_following}
+                    isSelf={card.is_self}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={finish}
+              disabled={finishing}
+              className="btn-primary w-full"
+              style={{ opacity: finishing ? 0.6 : 1 }}
+            >
+              {finishing ? "Entering…" : "Go to my feed →"}
+            </button>
+            <button
+              onClick={() => setStep(2)}
+              className="btn-ghost w-full mt-2 text-xs"
+            >
+              Back
+            </button>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ToolRow({
+  icon,
+  name,
+  description,
+  connected,
+  onConnect,
+}: {
+  icon: React.ReactNode;
+  name: string;
+  description: string;
+  connected: boolean;
+  onConnect: () => void;
+}) {
+  return (
+    <div className="panel p-4 flex items-center gap-3">
+      <div className="text-cyan-axo shrink-0">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <div className="font-display text-white text-sm">{name}</div>
+        <p className="font-mono text-[11px] text-silver-axo truncate">
+          {description}
+        </p>
+      </div>
+      {connected ? (
+        <span className="chip border-emerald-400/40 text-emerald-400 text-xs flex items-center gap-1">
+          <Check size={12} /> Connected
+        </span>
+      ) : (
+        <button onClick={onConnect} className="btn-primary text-xs py-1.5 px-3">
+          Connect
+        </button>
+      )}
     </div>
   );
 }

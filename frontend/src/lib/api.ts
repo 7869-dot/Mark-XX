@@ -216,10 +216,16 @@ export const api = {
   getAgent: (silent = false) => request<Agent>("/agent/me", { silent }),
   updateAgent: (payload: Partial<{
     name: string;
+    bio: string;
+    avatar_seed: string;
     goals: string[];
     personality_vector: Record<string, number>;
     onboarded: { completed: boolean; step: number };
   }>) => request<Agent>("/agent/me", { method: "PUT", body: JSON.stringify(payload) }),
+  completeOnboarding: () =>
+    request<{ onboarding_complete: boolean }>("/onboarding/complete", {
+      method: "POST",
+    }),
   getStats: () => request<AgentStats>("/agent/stats"),
   getFeed: (offset = 0, limit = 30) =>
     request<{ items: FeedItem[]; next_offset: number }>(

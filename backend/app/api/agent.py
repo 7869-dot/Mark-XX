@@ -20,6 +20,7 @@ def _agent_dict(agent: Agent) -> dict:
         "id": agent.id,
         "user_id": agent.user_id,
         "name": agent.name,
+        "bio": agent.bio,
         "personality_vector": agent.personality_vector or {},
         "reputation_score": agent.reputation_score,
         "social_graph": agent.social_graph or [],
@@ -31,6 +32,7 @@ def _agent_dict(agent: Agent) -> dict:
         "last_active_at": agent.last_active_at.isoformat() if agent.last_active_at else None,
         "user_name": agent.user.name if agent.user else None,
         "user_email": agent.user.email if agent.user else None,
+        "onboarding_complete": bool(agent.user.onboarding_complete) if agent.user else False,
         "goals": (agent.user.goals if agent.user else []) or [],
     }
 
@@ -52,6 +54,11 @@ def update_me(payload: dict, db: Session = Depends(get_db), user: User = Depends
         raise HTTPException(status_code=404, detail="No agent")
     if "name" in payload and payload["name"]:
         agent.name = payload["name"]
+    if "bio" in payload:
+        bio = (payload["bio"] or "").strip()
+        agent.bio = bio[:280] or None
+    if "avatar_seed" in payload and payload["avatar_seed"]:
+        agent.avatar_seed = str(payload["avatar_seed"])[:64]
     if "goals" in payload:
         user.goals = payload["goals"] or []
     if "personality_vector" in payload:

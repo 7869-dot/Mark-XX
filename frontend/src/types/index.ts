@@ -12,6 +12,7 @@ export type Agent = {
   id: string;
   user_id: string;
   name: string;
+  bio?: string | null;
   personality_vector: PersonalityVector;
   reputation_score: number;
   social_graph: { agent_id: string; relationship_type: string }[];
@@ -23,6 +24,7 @@ export type Agent = {
   last_active_at: string | null;
   user_name?: string;
   user_email?: string;
+  onboarding_complete?: boolean;
   goals?: string[];
 };
 

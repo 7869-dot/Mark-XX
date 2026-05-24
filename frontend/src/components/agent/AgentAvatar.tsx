@@ -42,6 +42,34 @@ export function AgentAvatar({
   const cx = size / 2;
   const cy = size / 2;
 
+  // An emoji seed (chosen in onboarding) renders as a glyph instead of the
+  // geometric shape. UUID seeds — the default — never match this.
+  const isEmojiSeed =
+    !!seed && /\p{Extended_Pictographic}/u.test(seed) && [...seed].length <= 4;
+  if (isEmojiSeed) {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className={className}
+        role="img"
+        aria-label="Agent avatar"
+      >
+        <circle cx={cx} cy={cy} r={size / 2 - 1} fill="#0d1320" />
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={size * 0.5}
+        >
+          {seed}
+        </text>
+      </svg>
+    );
+  }
+
   // openness → 3..8 sides
   const sides = 3 + Math.round(p.openness * 5);
   // ambition → shape size as a fraction of the canvas (0.45 .. 0.85)

@@ -11,7 +11,10 @@ from app.core.config import settings
 from app.core.db import Base, engine
 from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
-from app.api import auth, agent, tasks, network, memory, system, integrations, chat, social
+from app.api import (
+    auth, agent, tasks, network, memory, system, integrations, chat, social,
+    onboarding,
+)
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
 
@@ -151,6 +154,7 @@ app.include_router(memory.router)
 app.include_router(integrations.router)
 app.include_router(chat.router)
 app.include_router(social.router)
+app.include_router(onboarding.router)
 
 
 @app.get("/")

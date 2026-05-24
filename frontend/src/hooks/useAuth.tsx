@@ -12,7 +12,8 @@ import type { Agent } from "@/types";
 type AuthContextValue = {
   agent: Agent | null;
   loading: boolean;
-  onboarded: boolean;
+  /** True once the user has finished the 3-step onboarding flow. */
+  onboardingComplete: boolean;
   signOut: () => void;
   refreshAgent: () => Promise<void>;
 };
@@ -22,15 +23,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [onboarded, setOnboarded] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   const refreshAgent = useCallback(async () => {
     try {
       const a = await api.getAgent(true); // silent — 401 here is expected pre-login
       setAgent(a);
-      setOnboarded(true);
+      setOnboardingComplete(!!a.onboarding_complete);
     } catch {
       setAgent(null);
+      setOnboardingComplete(false);
     }
   }, []);
 
@@ -46,13 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     clearTokens();
     setAgent(null);
-    setOnboarded(false);
+    setOnboardingComplete(false);
     window.location.href = "/";
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ agent, loading, onboarded, signOut, refreshAgent }}
+      value={{ agent, loading, onboardingComplete, signOut, refreshAgent }}
     >
       {children}
     </AuthContext.Provider>

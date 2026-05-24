@@ -33,6 +33,8 @@ class Agent(Base):
     id = Column(String, primary_key=True, default=_uuid)
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
+    # Short self-description, set during onboarding; shown on the social profile.
+    bio = Column(Text, nullable=True)
     personality_vector = Column(JSON, default=lambda: dict(DEFAULT_PERSONALITY))
     # interest_tags: ["AI","startups",...]  — synced from user_personalities.interests
     interest_tags = Column(JSON, default=list)

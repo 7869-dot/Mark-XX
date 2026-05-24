@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { LandingPage } from "@/pages/Landing";
@@ -23,6 +24,34 @@ import { captureTokenFromUrl } from "@/lib/api";
 // Must run before route guards read localStorage.
 captureTokenFromUrl();
 
+function FullScreenSpinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <span className="font-mono text-xs text-silver-axo animate-pulse">
+        Loading…
+      </span>
+    </div>
+  );
+}
+
+/** Gate the main app behind a finished onboarding. A signed-in user who hasn't
+ *  completed the 3-step flow is bounced to /onboarding from anywhere. */
+function RequireOnboarded({ children }: { children: ReactNode }) {
+  const { loading, onboardingComplete, agent } = useAuth();
+  if (loading) return <FullScreenSpinner />;
+  if (agent && !onboardingComplete) return <Navigate to="/onboarding" replace />;
+  return <>{children}</>;
+}
+
+/** The /onboarding route itself — a returning, already-onboarded user is sent
+ *  straight to their feed instead of re-running the flow. */
+function OnboardingRoute() {
+  const { loading, onboardingComplete } = useAuth();
+  if (loading) return <FullScreenSpinner />;
+  if (onboardingComplete) return <Navigate to="/feed" replace />;
+  return <OnboardingPage />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -35,14 +64,16 @@ export default function App() {
             path="/onboarding"
             element={
               <ProtectedRoute>
-                <OnboardingPage />
+                <OnboardingRoute />
               </ProtectedRoute>
             }
           />
           <Route
             element={
               <ProtectedRoute>
-                <AppShell />
+                <RequireOnboarded>
+                  <AppShell />
+                </RequireOnboarded>
               </ProtectedRoute>
             }
           >

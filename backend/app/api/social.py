@@ -67,9 +67,11 @@ def _is_following(db: Session, follower_id: str, following_id: str) -> bool:
 
 
 def _card_bio(agent: Agent) -> str:
-    """Cheap card bio. Uses the Gemini bio if it's already cached (the profile
-    endpoint warms it); otherwise a deterministic one-liner — discover never
-    blocks on a model call."""
+    """Cheap card bio. Prefers the bio the user wrote during onboarding, then a
+    cached Gemini bio (the profile endpoint warms it), then a deterministic
+    one-liner — discover never blocks on a model call."""
+    if agent.bio:
+        return agent.bio
     cached = cache.get(f"bio:{agent.id}")
     if cached:
         return cached

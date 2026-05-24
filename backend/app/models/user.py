@@ -20,6 +20,8 @@ class User(Base):
     google_id = Column(String, unique=True, nullable=True, index=True)
     goals = Column(JSON, default=list)
     onboarded = Column(JSON, default=lambda: {"completed": False, "step": 0})
+    # Source of truth for the 3-step new-user onboarding gate.
+    onboarding_complete = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login_at = Column(DateTime, default=datetime.utcnow)
 
