@@ -302,6 +302,21 @@ def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> st
         return stub_tool_response(hint or prompt, tools)
 
 
+def generate_for_agent(db, agent, instruction: str, response_format: str = "text") -> str:
+    """Generate text in this agent's persistent voice.
+
+    Routes through context_builder so every call carries the same agent
+    system prompt + personality + bio + memory + user-personality context.
+    This is the canonical entry point for any AGENT-AS-ITSELF Gemini call
+    (autonomous posts, briefings, alerts) — keeps the voice consistent across
+    surfaces and is the single place to evolve the prompt.
+    """
+    from app.services.context_builder import build_voice_prompt
+
+    prompt = build_voice_prompt(db, agent, instruction)
+    return generate(prompt, response_format=response_format)
+
+
 def ping() -> bool:
     """Cheap liveness check for /health. True if stubbed or a 1-token call works."""
     if settings.USE_STUBS or not settings.GEMINI_API_KEY:

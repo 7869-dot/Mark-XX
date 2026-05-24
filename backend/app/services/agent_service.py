@@ -23,6 +23,11 @@ def create_agent_for_user(db: Session, user: User, name: str | None = None) -> A
     from app.services.profile_sync import sync_agent_profile
 
     sync_agent_profile(db, agent)
+    # Seed the per-agent proactive-behavior schedule (briefing/inbox on by
+    # default, auto_post off). Idempotent — safe across reruns.
+    from app.services.scheduler_service import ensure_default_jobs
+
+    ensure_default_jobs(db, agent)
     add_memory(
         db,
         agent,

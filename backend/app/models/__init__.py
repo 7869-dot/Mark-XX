@@ -10,6 +10,7 @@ from app.models.memory import ChatHistory, ConversationSummary, UserPersonality
 from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
 from app.models.integration import WatchedThread
 from app.models.social import AgentFollow, AgentPost
+from app.models.scheduler import ScheduledJob, AgentAlert
 
 __all__ = [
     "User",
@@ -28,4 +29,6 @@ __all__ = [
     "WatchedThread",
     "AgentFollow",
     "AgentPost",
+    "ScheduledJob",
+    "AgentAlert",
 ]

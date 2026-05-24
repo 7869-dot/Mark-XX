@@ -49,6 +49,11 @@ class Agent(Base):
     total_tasks_completed = Column(Integer, default=0)
     total_interactions = Column(Integer, default=0)
     avatar_seed = Column(String, default=_uuid)
+    # Stable system-prompt suffix that overrides default voice — set by
+    # marketplace templates; injected by context_builder on every Gemini call.
+    system_prompt = Column(Text, nullable=True)
+    # 'off' | 'daily' | 'weekly' — drives the auto_post scheduler job.
+    auto_post_schedule = Column(String, default="off", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
 
@@ -72,6 +77,9 @@ class AgentMemoryType(str, enum.Enum):
     interaction = "interaction"
     learned_preference = "learned_preference"
     milestone = "milestone"
+    # Memories of the agent's own outbound posts — closes the voice-consistency
+    # loop in context_builder (Layer 4 of the memory pipeline).
+    post_history = "post_history"
 
 
 class AgentMemory(Base):

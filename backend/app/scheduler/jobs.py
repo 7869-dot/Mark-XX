@@ -440,3 +440,6 @@ def register_jobs(scheduler) -> None:
     scheduler.add_job(weekly_email_digest_job, "cron", day_of_week="mon", hour=8, minute=0, id="weekly_email_digest", replace_existing=True)
     scheduler.add_job(daily_briefing_job, "cron", hour=7, minute=30, id="daily_briefing", replace_existing=True)
     scheduler.add_job(prep_for_meeting_sweep, "interval", minutes=15, id="prep_for_meeting_sweep", replace_existing=True)
+    # Sprint 3 — proactive agent behaviors (per-agent gated by scheduled_jobs).
+    from app.scheduler.proactive_jobs import register_proactive_jobs
+    register_proactive_jobs(scheduler)
