@@ -330,7 +330,34 @@ export function EmailIntelligence() {
         </div>
       )}
 
-      {!loading && data && (
+      {!loading && data && data.urgent.length === 0 && data.drafts.length === 0 && (
+        <div
+          className="px-4 py-6 text-center"
+          style={{
+            background: "var(--bg-tertiary)",
+            border: "1px dashed var(--border)",
+            borderRadius: 8,
+          }}
+        >
+          <p
+            className="text-[13px] mb-3"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Your agent hasn't classified any emails yet. It checks every 30
+            minutes — or click below to check now.
+          </p>
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="btn-primary text-xs py-1.5 px-4 inline-flex items-center gap-1.5"
+          >
+            <RefreshCcw size={12} />
+            {refreshing ? "Checking…" : "Check now"}
+          </button>
+        </div>
+      )}
+
+      {!loading && data && (data.urgent.length > 0 || data.drafts.length > 0) && (
         <>
           {/* URGENT */}
           <div className="mb-4">

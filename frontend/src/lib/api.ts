@@ -601,6 +601,25 @@ export const api = {
   agentActivity: () =>
     request<{ agent_id: string; items: AgentActivityItem[] }>("/agent/activity"),
 
+  // speech profile / personality init (onboarding tone questions)
+  initPersonality: (payload: {
+    avg_sentence_length: "short" | "medium" | "long";
+    formality: "casual" | "mixed" | "formal";
+    emoji_usage: "none" | "occasional" | "frequent";
+    punctuation_style: "minimal" | "standard" | "heavy";
+    signature_word?: string;
+  }) =>
+    request<{
+      avg_sentence_length: string | null;
+      formality: string | null;
+      emoji_usage: string | null;
+      punctuation_style: string | null;
+      signature_word: string | null;
+    }>("/agent/personality-init", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   // schedule — per-agent proactive behaviors
   getSchedule: (agentId: string) =>
     request<{ jobs: ScheduleJob[]; auto_post_schedule: string }>(

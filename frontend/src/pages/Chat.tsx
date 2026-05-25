@@ -169,6 +169,20 @@ export function ChatPage() {
     return () => window.removeEventListener("mousedown", onDown);
   }, [modelOpen]);
 
+  // Cmd/Ctrl+K toggles the model selector. Escape closes it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setModelOpen((o) => !o);
+      } else if (e.key === "Escape" && modelOpen) {
+        setModelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modelOpen]);
+
   useEffect(() => {
     localStorage.setItem(MODEL_KEY, model);
   }, [model]);
@@ -463,6 +477,17 @@ export function ChatPage() {
                   style={{ background: "var(--accent-primary)" }}
                 />
                 {activeModel.label}
+                <kbd
+                  className="ml-1 px-1 py-px rounded text-[9px]"
+                  style={{
+                    background: "var(--bg-tertiary)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-muted)",
+                    fontFamily: "var(--font-data)",
+                  }}
+                >
+                  ⌘K
+                </kbd>
                 <ChevronDown size={12} />
               </button>
               {modelOpen && (

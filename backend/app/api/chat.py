@@ -122,6 +122,19 @@ def message(request: Request, body: ChatMessageIn, background_tasks: BackgroundT
     background_tasks.add_task(summarize_user, user.id)
     background_tasks.add_task(refresh_personality_if_due, user.id)
 
+    # Seed the structured speech-mirror profile once the user has enough
+    # messages. Cheap, no LLM — runs every turn but no-ops after the first
+    # successful bootstrap.
+    def _bootstrap(user_id: str):
+        from app.core.db import SessionLocal
+        from app.services.speech_profile import bootstrap_from_first_messages
+        _db = SessionLocal()
+        try:
+            bootstrap_from_first_messages(_db, user_id)
+        finally:
+            _db.close()
+    background_tasks.add_task(_bootstrap, user.id)
+
     return envelope(
         {"reply": _serialize(agent_turn), "echo": _serialize(user_turn)},
         agent_id=agent.id,

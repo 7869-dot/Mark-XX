@@ -14,6 +14,7 @@ from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
     auth, agent, tasks, network, memory, system, integrations, chat, social,
     onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
+    personality, debug,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -56,6 +57,10 @@ def _startup_self_check() -> None:
 async def lifespan(app: FastAPI):
     _startup_self_check()
     Base.metadata.create_all(bind=engine)
+    # Add columns/indexes that postdate create_all (Section 8 + Phase 3 columns,
+    # Phase 8 scale indexes). Idempotent.
+    from app.core.schema_sync import run_schema_sync
+    run_schema_sync(engine)
     # One-time idempotent cut-over of legacy social_graph -> agent_connections.
     from app.core.db import SessionLocal
     from app.services.profile_sync import migrate_social_graph_to_connections
@@ -171,6 +176,8 @@ app.include_router(marketplace.router)
 app.include_router(agents.router)
 app.include_router(email_intel.router)
 app.include_router(a2a_inbox.router)
+app.include_router(personality.router)
+app.include_router(debug.router)
 
 
 @app.get("/")

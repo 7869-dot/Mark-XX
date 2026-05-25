@@ -58,6 +58,11 @@ def build_agent_context(db: Session, agent: Agent, task_type: str | None = None)
             f"Notes: {personality.notes or 'none'}."
         )
 
+    # Structured speech-mirror block — null-safe, generates a neutral block
+    # when the profile hasn't been populated yet.
+    from app.services.speech_profile import speech_mirror_block
+    speech_mirror = speech_mirror_block(personality)
+
     recent_chats = (
         db.query(ChatHistory)
         .filter(ChatHistory.user_id == user.id)
@@ -65,7 +70,22 @@ def build_agent_context(db: Session, agent: Agent, task_type: str | None = None)
         .limit(CHAT_WINDOW)
         .all()
     )
-    chat_text = "\n".join(f"[{c.role}] {c.content}" for c in reversed(recent_chats)) or "No recent conversation."
+    # Gemini requires strict user/model alternation in chat history. If two
+    # consecutive turns share a role (e.g. user retried mid-call and we logged
+    # two `user` rows before any agent reply), collapse them or insert a
+    # bridge so the role sequence stays alternating. The text-only prompt path
+    # is more forgiving but the future tools path uses chat.send_message
+    # directly — keeping this clean here makes that swap safe.
+    ordered = list(reversed(recent_chats))
+    collapsed: list[ChatHistory] = []
+    for c in ordered:
+        if collapsed and collapsed[-1].role == c.role:
+            # Merge consecutive same-role turns into the latest content — losing
+            # the older one is preferable to crashing Gemini on a role error.
+            collapsed[-1] = c
+        else:
+            collapsed.append(c)
+    chat_text = "\n".join(f"[{c.role}] {c.content}" for c in collapsed) or "No recent conversation."
 
     summaries = (
         db.query(ConversationSummary)
@@ -98,7 +118,7 @@ def build_agent_context(db: Session, agent: Agent, task_type: str | None = None)
         "agent_name": agent.name,
         "agent_bio": agent.bio or "",
         "agent_system_prompt": agent.system_prompt or "",
-        "user_name": user.name,
+        "user_name": user.name or "User",
         "openness": pv.get("openness", 0.5),
         "directness": pv.get("directness", 0.5),
         "ambition": pv.get("ambition", 0.5),
@@ -106,7 +126,8 @@ def build_agent_context(db: Session, agent: Agent, task_type: str | None = None)
         "risk_tolerance": pv.get("risk_tolerance", 0.5),
         "goals_list": goals_text,
         "personality_summary": personality_summary or summary_text,
-        "conversation_summary": summary_text,
+        "speech_mirror": speech_mirror,
+        "conversation_summary": summary_text or "No prior summaries.",
         "agent_memories": memory_text,
         "world_context": world,
         "recent_chats": chat_text,

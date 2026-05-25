@@ -38,4 +38,16 @@ class UserPersonality(Base):
     interests = Column(JSON, default=list)
     communication_style = Column(Text, default="")
     notes = Column(Text, default="")
+
+    # === Structured speech-mirror fields (Phase 3) ===
+    # Each enum-shaped column stores a short token so the chat prompt can
+    # inject it verbatim. NULLs mean "not yet inferred" — the prompt block
+    # then falls back to the freeform `communication_style` text.
+    avg_sentence_length = Column(String(16), nullable=True)  # short | medium | long
+    formality = Column(String(16), nullable=True)            # casual | mixed | formal
+    emoji_usage = Column(String(16), nullable=True)          # none | occasional | frequent
+    punctuation_style = Column(String(16), nullable=True)    # minimal | standard | heavy
+    signature_word = Column(String(64), nullable=True)
+    sample_phrases = Column(JSON, default=list)              # short list of verbatim phrases
+
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

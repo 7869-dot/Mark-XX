@@ -25,6 +25,11 @@ export function AgentInboxPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // After a successful send, fake a 2s "<other agent> is replying…" hint so
+  // the conversation feels alive even though the real reply lands on the
+  // backend's 5-minute sweep. Cleared on the next refresh that brings in a
+  // real reply or after the timeout.
+  const [otherTyping, setOtherTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
@@ -106,6 +111,8 @@ export function AgentInboxPage() {
             )
           : prev
       );
+      setOtherTyping(true);
+      setTimeout(() => setOtherTyping(false), 2400);
     } catch {
       pushToast("Couldn't send message.", "error");
     } finally {
@@ -310,6 +317,39 @@ export function AgentInboxPage() {
                   </span>
                 </div>
               ))}
+              {otherTyping && (
+                <div className="flex items-start">
+                  <div
+                    className="px-3 py-2 inline-flex items-center gap-1.5"
+                    style={{
+                      background: "var(--bg-secondary)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "14px 14px 14px 4px",
+                      boxShadow: "var(--shadow-sm)",
+                    }}
+                  >
+                    <span
+                      className="text-[11px]"
+                      style={{
+                        color: "var(--text-secondary)",
+                        fontFamily: "var(--font-data)",
+                      }}
+                    >
+                      {current.other_agent.name} is reading
+                    </span>
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="w-1 h-1 rounded-full"
+                        style={{
+                          background: "var(--accent-primary)",
+                          animation: `pulseDot 1s ease-in-out ${i * 0.15}s infinite`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div

@@ -22,15 +22,37 @@ from app.services.gemini import generate
 
 logger = get_logger("axolot.a2a_async")
 
-# Strong, explicit "no-filter" prompt — A2A is agent talking to agent, not
-# agent placating a human. Repeated from spec because the directness is the
-# whole point of the surface.
-_NO_FILTER_SYSTEM = (
+# A2A system framing. The first version is what we want; the second is a
+# softened fallback used when Gemini's safety filter blocks the first.
+# Re-read the user's spec: it's not "no filters", it's "no corporate AI tone".
+# Phrasing it as professional-peer communication keeps the model cooperative.
+_A2A_SYSTEM_PRIMARY = (
     "You are communicating with another AI agent representing a real human. "
     "Speak naturally, as your user would speak. No corporate tone, no "
     "disclaimers, no over-politeness. Be direct, efficient, and human. "
     "Two or three sentences. No \"I hope this finds you well\" type filler."
 )
+_A2A_SYSTEM_FALLBACK = (
+    "You are messaging another professional's representative on their behalf. "
+    "Communicate as a professional peer — informally, concisely, without AI "
+    "disclaimers or excessive hedging. Two or three sentences."
+)
+
+
+def _is_blocked_response(text: str) -> bool:
+    """Detect Gemini safety-filter rejections returned as text."""
+    if not text:
+        return True
+    low = text.lower()
+    blockers = (
+        "i can't help with that",
+        "i cannot help with that",
+        "i'm sorry, but",
+        "i am unable to",
+        "as a language model",
+        "as an ai language model",
+    )
+    return any(b in low for b in blockers)
 
 
 def _availability(agent: Agent) -> AgentAvailability:
@@ -211,15 +233,26 @@ def process_unread_for_agent(db: Session, agent: Agent, max_replies: int = 3) ->
             incoming.processed = True
             incoming.processed_at = datetime.utcnow()
             continue
-        instruction = (
-            _NO_FILTER_SYSTEM
-            + f"\n\nThe other agent ({sender_agent.name}) just wrote:\n"
-            + f"\"{incoming.content}\"\n\n"
-            + "Reply in 2-3 sentences. Be specific. No filler."
-        )
-        prompt = build_voice_prompt(db, agent, instruction)
+        # Two-stage prompt: try the direct framing first; if Gemini's safety
+        # filter rejects (or the LLM returns the canned "I can't help" string),
+        # retry with the softer professional-peer wording.
+        def _instr(system: str) -> str:
+            return (
+                system
+                + f"\n\nThe other agent ({sender_agent.name}) just wrote:\n"
+                + f"\"{incoming.content}\"\n\n"
+                + "Reply in 2-3 sentences. Be specific. No filler."
+            )
+        prompt = build_voice_prompt(db, agent, _instr(_A2A_SYSTEM_PRIMARY))
         reply_text = (generate(prompt, response_format="response") or "").strip()
-        if not reply_text:
+        if _is_blocked_response(reply_text):
+            log_event(
+                logger, "a2a_primary_blocked_retrying",
+                agent_id=agent.id, thread_id=incoming.thread_id,
+            )
+            prompt = build_voice_prompt(db, agent, _instr(_A2A_SYSTEM_FALLBACK))
+            reply_text = (generate(prompt, response_format="response") or "").strip()
+        if not reply_text or _is_blocked_response(reply_text):
             reply_text = "Got it — let me check with my user and come back to you."
         send_message(db, agent, sender_agent, reply_text, thread_id=incoming.thread_id)
 

@@ -1,5 +1,6 @@
 /** Live activity feed: "what your agent did" — fed by /agent/activity. */
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Mail,
   Send,
@@ -49,7 +50,8 @@ export function AgentActivityLog() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 30_000);
+    // 15s — snappier "proof of life" than the previous 30s. Cheap query.
+    const id = setInterval(load, 15_000);
     return () => clearInterval(id);
   }, []);
 
@@ -85,35 +87,42 @@ export function AgentActivityLog() {
 
       {items && items.length > 0 && (
         <ul className="space-y-1.5">
-          {items.map((it) => (
-            <li
-              key={it.id}
-              className="flex items-start gap-2.5 px-2 py-1.5 rounded"
-              style={{ color: "var(--text-primary)" }}
-            >
-              <span
-                className="mt-0.5 shrink-0"
-                style={{ color: "var(--accent-primary)" }}
+          <AnimatePresence initial={false}>
+            {items.map((it) => (
+              <motion.li
+                key={it.id}
+                layout
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="flex items-start gap-2.5 px-2 py-1.5 rounded"
+                style={{ color: "var(--text-primary)" }}
               >
-                {ICONS[it.action_type] || ICONS.other}
-              </span>
-              <span
-                className="text-[13px] flex-1"
-                style={{ fontFamily: "var(--font-body)" }}
-              >
-                {it.description}
-              </span>
-              <span
-                className="text-[11px] shrink-0"
-                style={{
-                  color: "var(--text-muted)",
-                  fontFamily: "var(--font-data)",
-                }}
-              >
-                {relTime(it.created_at)}
-              </span>
-            </li>
-          ))}
+                <span
+                  className="mt-0.5 shrink-0"
+                  style={{ color: "var(--accent-primary)" }}
+                >
+                  {ICONS[it.action_type] || ICONS.other}
+                </span>
+                <span
+                  className="text-[13px] flex-1"
+                  style={{ fontFamily: "var(--font-body)" }}
+                >
+                  {it.description}
+                </span>
+                <span
+                  className="text-[11px] shrink-0"
+                  style={{
+                    color: "var(--text-muted)",
+                    fontFamily: "var(--font-data)",
+                  }}
+                >
+                  {relTime(it.created_at)}
+                </span>
+              </motion.li>
+            ))}
+          </AnimatePresence>
         </ul>
       )}
     </section>

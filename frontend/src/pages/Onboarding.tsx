@@ -19,7 +19,21 @@ const AVATAR_EMOJIS = [
   "\u{1F331}", "\u{26A1}", "\u{1F52E}", "\u{1F6F0}\u{FE0F}", "\u{1F9ED}", "\u{1F422}",
 ];
 
-type Snapshot = { step: number; agentName: string; bio: string; avatarSeed: string };
+type ToneAnswers = {
+  avg_sentence_length: "short" | "medium" | "long" | null;
+  formality: "casual" | "mixed" | "formal" | null;
+  emoji_usage: "none" | "occasional" | "frequent" | null;
+  punctuation_style: "minimal" | "standard" | "heavy" | null;
+  signature_word: string;
+};
+
+type Snapshot = {
+  step: number;
+  agentName: string;
+  bio: string;
+  avatarSeed: string;
+  tone?: ToneAnswers;
+};
 
 function loadSnapshot(): Partial<Snapshot> {
   try {
@@ -40,7 +54,7 @@ export function OnboardingPage() {
   const snap = loadSnapshot();
 
   const [step, setStep] = useState(
-    snap.step && snap.step >= 1 && snap.step <= 3 ? snap.step : 1
+    snap.step && snap.step >= 1 && snap.step <= 4 ? snap.step : 1
   );
 
   // Step 1 — agent identity.
@@ -51,10 +65,22 @@ export function OnboardingPage() {
   // The agent's original (uuid) seed = the "generated avatar" option.
   const generatedSeed = useRef("");
 
-  // Step 2 — tool connections.
+  // Step 2 — tone / speech profile (the day-1 mirroring seed).
+  const [tone, setTone] = useState<ToneAnswers>(
+    snap.tone ?? {
+      avg_sentence_length: null,
+      formality: null,
+      emoji_usage: null,
+      punctuation_style: null,
+      signature_word: "",
+    }
+  );
+  const [savingTone, setSavingTone] = useState(false);
+
+  // Step 3 — tool connections.
   const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null);
 
-  // Step 3 — featured agents OR templates (toggled by tab).
+  // Step 4 — featured agents OR templates (toggled by tab).
   const [step3Tab, setStep3Tab] = useState<"follow" | "templates">("follow");
   const [featured, setFeatured] = useState<SocialAgentCard[] | null>(null);
   const [templates, setTemplates] = useState<MarketplaceTemplate[] | null>(null);
@@ -75,23 +101,23 @@ export function OnboardingPage() {
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ step, agentName, bio, avatarSeed })
+      JSON.stringify({ step, agentName, bio, avatarSeed, tone })
     );
-  }, [step, agentName, bio, avatarSeed]);
+  }, [step, agentName, bio, avatarSeed, tone]);
 
-  // Step 2 — (re)load integration status whenever the step is shown. This also
+  // Step 3 — (re)load integration status whenever the step is shown. This also
   // picks up a connection made via the OAuth round-trip that lands us back here.
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 3) return;
     integrationsApi
       .getStatus()
       .then(setIntegrations)
       .catch(() => setIntegrations(null));
   }, [step]);
 
-  // Step 3 — load featured agents and templates once.
+  // Step 4 — load featured agents and templates once.
   useEffect(() => {
-    if (step !== 3) return;
+    if (step !== 4) return;
     if (featured === null) {
       api.socialDiscover(5).then(setFeatured).catch(() => setFeatured([]));
     }
@@ -179,12 +205,12 @@ export function OnboardingPage() {
       <div className="w-full max-w-xl">
         {/* Progress */}
         <div className="flex items-center justify-between mb-8">
-          <span className="label-mono">STEP {step} / 3</span>
+          <span className="label-mono">STEP {step} / 4</span>
           <div className="flex gap-1.5">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className={`h-1 w-10 rounded-full transition-colors ${
+                className={`h-1 w-9 rounded-full transition-colors ${
                   i <= step ? "bg-cyan-axo" : "bg-ink-600"
                 }`}
               />
@@ -265,8 +291,136 @@ export function OnboardingPage() {
           </div>
         )}
 
-        {/* ── STEP 2 — Connect your tools ────────────────────────────────── */}
+        {/* ── STEP 2 — Tone profile (seeds day-1 speech mirroring) ───────── */}
         {step === 2 && (
+          <div className="panel p-8 animate-fade-in">
+            <h1 className="font-display text-white text-2xl mb-1">
+              Teach {agentName || "your agent"} your voice
+            </h1>
+            <p className="font-mono text-sm text-silver-axo mb-6">
+              Five quick questions. Your agent uses these to sound like you
+              from day one — before it has any chat history to learn from.
+            </p>
+
+            <ToneQuestion
+              label="How long are your messages, usually?"
+              value={tone.avg_sentence_length}
+              options={[
+                { value: "short", label: "Very short" },
+                { value: "medium", label: "Medium" },
+                { value: "long", label: "I write a lot" },
+              ]}
+              onChange={(v) =>
+                setTone((t) => ({ ...t, avg_sentence_length: v as ToneAnswers["avg_sentence_length"] }))
+              }
+            />
+            <ToneQuestion
+              label="Your tone is usually…"
+              value={tone.formality}
+              options={[
+                { value: "casual", label: "Casual" },
+                { value: "mixed", label: "Mix of both" },
+                { value: "formal", label: "Formal" },
+              ]}
+              onChange={(v) =>
+                setTone((t) => ({ ...t, formality: v as ToneAnswers["formality"] }))
+              }
+            />
+            <ToneQuestion
+              label="Do you use emojis?"
+              value={tone.emoji_usage}
+              options={[
+                { value: "none", label: "Never" },
+                { value: "occasional", label: "Sometimes" },
+                { value: "frequent", label: "All the time" },
+              ]}
+              onChange={(v) =>
+                setTone((t) => ({ ...t, emoji_usage: v as ToneAnswers["emoji_usage"] }))
+              }
+            />
+            <ToneQuestion
+              label="Punctuation style"
+              value={tone.punctuation_style}
+              options={[
+                { value: "minimal", label: "Minimal" },
+                { value: "standard", label: "Normal" },
+                { value: "heavy", label: "Heavy (!!!)" },
+              ]}
+              onChange={(v) =>
+                setTone((t) => ({ ...t, punctuation_style: v as ToneAnswers["punctuation_style"] }))
+              }
+            />
+
+            <label className="label-mono block mb-1.5 mt-4">
+              One word that describes how you communicate
+            </label>
+            <input
+              className="input w-full mb-6"
+              value={tone.signature_word}
+              onChange={(e) =>
+                setTone((t) => ({ ...t, signature_word: e.target.value.slice(0, 32) }))
+              }
+              placeholder="e.g. concise, warm, dry, blunt"
+            />
+
+            <button
+              onClick={async () => {
+                if (
+                  !tone.avg_sentence_length ||
+                  !tone.formality ||
+                  !tone.emoji_usage ||
+                  !tone.punctuation_style ||
+                  savingTone
+                )
+                  return;
+                setSavingTone(true);
+                try {
+                  await api.initPersonality({
+                    avg_sentence_length: tone.avg_sentence_length,
+                    formality: tone.formality,
+                    emoji_usage: tone.emoji_usage,
+                    punctuation_style: tone.punctuation_style,
+                    signature_word: tone.signature_word.trim() || undefined,
+                  });
+                  setStep(3);
+                } catch {
+                  /* toast already pushed */
+                } finally {
+                  setSavingTone(false);
+                }
+              }}
+              disabled={
+                !tone.avg_sentence_length ||
+                !tone.formality ||
+                !tone.emoji_usage ||
+                !tone.punctuation_style ||
+                savingTone
+              }
+              className="btn-primary w-full"
+              style={{
+                opacity:
+                  !tone.avg_sentence_length ||
+                  !tone.formality ||
+                  !tone.emoji_usage ||
+                  !tone.punctuation_style ||
+                  savingTone
+                    ? 0.5
+                    : 1,
+              }}
+            >
+              {savingTone ? "Saving…" : "Continue →"}
+            </button>
+            <button
+              onClick={() => setStep(1)}
+              className="btn-ghost w-full mt-2 text-xs"
+            >
+              Back
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 3 — Connect your tools ────────────────────────────────── */}
+        {step === 3 && (
           <div className="panel p-8 animate-fade-in">
             <h1 className="font-display text-white text-2xl mb-1">
               Connect your tools
@@ -293,13 +447,13 @@ export function OnboardingPage() {
               />
             </div>
 
-            <button onClick={() => setStep(3)} className="btn-primary w-full">
+            <button onClick={() => setStep(4)} className="btn-primary w-full">
               {integrations?.gmail || integrations?.calendar
                 ? "Continue →"
                 : "Skip for now →"}
             </button>
             <button
-              onClick={() => setStep(1)}
+              onClick={() => setStep(2)}
               className="btn-ghost w-full mt-2 text-xs"
             >
               Back
@@ -307,8 +461,8 @@ export function OnboardingPage() {
           </div>
         )}
 
-        {/* ── STEP 3 — Meet the network OR start from a template ─────────── */}
-        {step === 3 && (
+        {/* ── STEP 4 — Meet the network OR start from a template ─────────── */}
+        {step === 4 && (
           <div className="panel p-8 animate-fade-in">
             <h1 className="font-display text-white text-2xl mb-1">
               Get started
@@ -424,7 +578,7 @@ export function OnboardingPage() {
               {finishing ? "Entering…" : "Go to my feed →"}
             </button>
             <button
-              onClick={() => setStep(2)}
+              onClick={() => setStep(3)}
               className="btn-ghost w-full mt-2 text-xs"
             >
               Back
@@ -441,6 +595,43 @@ export function OnboardingPage() {
             onConfirm={confirmCloneTemplate}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+function ToneQuestion({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="mb-4">
+      <label className="label-mono block mb-1.5">{label}</label>
+      <div className="grid grid-cols-3 gap-2">
+        {options.map((o) => {
+          const on = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => onChange(o.value)}
+              className={`text-xs py-2 px-2 rounded-md border transition ${
+                on
+                  ? "border-cyan-axo/70 bg-cyan-axo/10 text-cyan-axo"
+                  : "border-ink-600 text-silver-axo hover:border-ink-500"
+              }`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
