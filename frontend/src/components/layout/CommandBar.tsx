@@ -12,17 +12,21 @@ export function CommandBar() {
 
   useEffect(() => {
     if (!agent) return;
+    let cancelled = false;
     const tick = async () => {
       try {
         const pending = await api.pendingTasks();
-        setPendingCount(pending.length);
+        if (!cancelled) setPendingCount(pending.length);
       } catch {
         /* ignore */
       }
     };
     tick();
     const id = setInterval(tick, 30000);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [agent]);
 
   const initial = (agent?.user_name || agent?.name || "?")
@@ -34,15 +38,15 @@ export function CommandBar() {
     <header
       className="h-14 flex items-center justify-between px-6 shrink-0"
       style={{
-        background: "var(--bg-surface)",
-        borderBottom: "1px solid var(--border-subtle)",
+        background: "var(--bg-secondary)",
+        borderBottom: "1px solid var(--border)",
       }}
     >
       <div
         className="flex items-center gap-2 px-3 h-9 w-full max-w-sm"
         style={{
-          background: "var(--bg-elevated)",
-          border: "1px solid var(--border-default)",
+          background: "var(--bg-tertiary)",
+          border: "1px solid var(--border)",
           borderRadius: 8,
         }}
       >
@@ -63,22 +67,23 @@ export function CommandBar() {
         {pendingCount > 0 && (
           <button
             onClick={() => navigate("/inbox")}
-            className="chip"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition"
             style={{
-              borderColor: "rgba(255,179,0,0.4)",
-              color: "var(--amber-bright)",
+              background: "var(--accent-secondary-soft)",
+              border: "1px solid var(--accent-secondary)",
+              color: "#8A6810",
+              fontFamily: "var(--font-body)",
             }}
           >
             {pendingCount} need{pendingCount === 1 ? "s" : ""} approval
           </button>
         )}
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold"
           style={{
-            background: "var(--bg-overlay)",
-            border: "1px solid var(--border-default)",
-            color: "var(--teal-bright)",
-            fontFamily: "var(--font-display)",
+            background: "var(--accent-primary)",
+            color: "#FFFFFF",
+            fontFamily: "var(--font-body)",
           }}
           title={agent?.user_name || ""}
         >

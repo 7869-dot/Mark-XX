@@ -18,9 +18,9 @@ export function MobileNav() {
     <nav
       className="md:hidden fixed bottom-0 inset-x-0 z-40 h-14 flex"
       style={{
-        background: "var(--bg-surface)",
-        borderTop: "1px solid var(--border-subtle)",
-        backdropFilter: "blur(8px)",
+        background: "var(--bg-secondary)",
+        borderTop: "1px solid var(--border)",
+        boxShadow: "0 -4px 12px rgba(15,17,22,0.04)",
       }}
     >
       {NAV.map((item) => {
@@ -31,8 +31,8 @@ export function MobileNav() {
             to={item.to}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] transition relative"
             style={({ isActive }) => ({
-              fontFamily: "var(--font-data)",
-              color: isActive ? "var(--teal-bright)" : "var(--text-secondary)",
+              fontFamily: "var(--font-body)",
+              color: isActive ? "var(--accent-primary)" : "var(--text-secondary)",
             })}
           >
             <Icon size={16} />
@@ -42,7 +42,7 @@ export function MobileNav() {
                 className={classNames(
                   "absolute top-1.5 right-[28%] w-1.5 h-1.5 rounded-full"
                 )}
-                style={{ background: "var(--teal-bright)" }}
+                style={{ background: "var(--accent-primary)" }}
               />
             )}
           </NavLink>

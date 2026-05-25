@@ -12,8 +12,9 @@ import {
   ListChecks,
   Inbox,
   Settings,
+  Users,
 } from "lucide-react";
-import { AgentOrb, statusToOrbState } from "@/components/agent/AgentOrb";
+import { AgentSwitcher } from "@/components/layout/AgentSwitcher";
 import { useAuth } from "@/hooks/useAuth";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { classNames } from "@/lib/utils";
@@ -25,6 +26,7 @@ const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = 
   { to: "/gmail", label: "Inbox", icon: <Mail size={16} />, badge: "unread" },
   { to: "/calendar", label: "Calendar", icon: <Calendar size={16} /> },
   { to: "/agent", label: "Agent", icon: <User size={16} /> },
+  { to: "/agents", label: "My agents", icon: <Users size={16} /> },
   { to: "/feed", label: "Feed", icon: <Rss size={16} /> },
   { to: "/discover", label: "Discover", icon: <Compass size={16} /> },
   { to: "/marketplace", label: "Marketplace", icon: <Store size={16} /> },
@@ -34,54 +36,67 @@ const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = 
   { to: "/settings/integrations", label: "Settings", icon: <Settings size={16} /> },
 ];
 
+/** Maps the agent's lifecycle status to one of the three sidebar dot states. */
+function statusDot(status: string | undefined) {
+  if (status === "thinking" || status === "processing")
+    return { color: "#D4A017", label: "Processing" };
+  if (status === "asleep" || status === "offline")
+    return { color: "#9A9A9A", label: "Offline" };
+  return { color: "#1A7F5A", label: "Active" };
+}
+
 export function Sidebar() {
   const { agent, signOut } = useAuth();
   const { unread } = useIntegrations();
   if (!agent) return null;
 
-  const orbState = statusToOrbState(agent.status);
+  const dot = statusDot(agent.status);
 
   return (
     <aside
       className="hidden md:flex flex-col w-60 shrink-0"
       style={{
-        background: "var(--bg-surface)",
-        borderRight: "1px solid var(--border-subtle)",
+        background: "var(--bg-sidebar)",
+        color: "var(--text-on-dark)",
       }}
     >
       <div className="px-5 pt-6 pb-5 flex items-center gap-2">
         <span
-          className="text-lg tracking-[0.25em]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
+          className="text-lg tracking-[0.18em]"
+          style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 400,
+            color: "var(--text-on-dark)",
+          }}
         >
-          <span style={{ color: "var(--text-primary)" }}>AXO</span>
-          <span style={{ color: "var(--teal-bright)" }}>LOT</span>
+          Axolot
         </span>
       </div>
 
-      <nav className="flex-1 px-3 flex flex-col gap-1 overflow-y-auto">
+      <AgentSwitcher />
+
+      <nav className="flex-1 px-3 flex flex-col gap-0.5 overflow-y-auto">
         {NAV.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               classNames(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition",
-                isActive ? "nav-active" : "nav-idle"
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition",
+                isActive ? "sidebar-nav-active" : "sidebar-nav-idle"
               )
             }
             style={({ isActive }) =>
               isActive
                 ? {
-                    fontFamily: "var(--font-display)",
-                    background: "var(--bg-elevated)",
-                    color: "var(--teal-bright)",
-                    border: "1px solid var(--border-active)",
+                    fontFamily: "var(--font-body)",
+                    background: "var(--bg-sidebar-hover)",
+                    color: "#FFFFFF",
+                    fontWeight: 500,
                   }
                 : {
-                    fontFamily: "var(--font-display)",
-                    color: "var(--text-secondary)",
-                    border: "1px solid transparent",
+                    fontFamily: "var(--font-body)",
+                    color: "var(--text-on-dark-muted)",
                   }
             }
           >
@@ -89,10 +104,11 @@ export function Sidebar() {
             <span className="flex-1">{item.label}</span>
             {item.badge === "unread" && unread > 0 && (
               <span
-                className="chip"
+                className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-medium"
                 style={{
-                  borderColor: "var(--border-active)",
-                  color: "var(--teal-bright)",
+                  background: "var(--accent-primary)",
+                  color: "#FFFFFF",
+                  fontFamily: "var(--font-data)",
                 }}
               >
                 {unread > 99 ? "99+" : unread}
@@ -104,31 +120,55 @@ export function Sidebar() {
 
       <div
         className="p-4 flex items-center gap-3"
-        style={{ borderTop: "1px solid var(--border-subtle)" }}
+        style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
       >
-        <AgentOrb state={orbState} size={36} />
+        <span
+          className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ background: dot.color, boxShadow: `0 0 6px ${dot.color}` }}
+          aria-label={dot.label}
+        />
         <div className="min-w-0 flex-1">
           <div
             className="text-sm truncate"
-            style={{ fontFamily: "var(--font-display)", color: "var(--text-primary)" }}
+            style={{
+              fontFamily: "var(--font-body)",
+              fontWeight: 500,
+              color: "#FFFFFF",
+            }}
           >
             {agent.name}
           </div>
           <div
             className="text-[11px] truncate"
-            style={{ fontFamily: "var(--font-data)", color: "var(--text-muted)" }}
+            style={{
+              fontFamily: "var(--font-data)",
+              color: "var(--text-on-dark-muted)",
+            }}
           >
-            {orbState === "thinking"
-              ? "Thinking…"
-              : orbState === "alert"
-              ? "Asleep"
-              : "Online · Ready"}
+            {dot.label}
           </div>
         </div>
       </div>
 
       <div className="px-4 pb-4">
-        <button onClick={signOut} className="btn-ghost w-full text-xs">
+        <button
+          onClick={signOut}
+          className="w-full text-xs px-3 py-1.5 rounded-md transition"
+          style={{
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "var(--text-on-dark-muted)",
+            fontFamily: "var(--font-body)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+            e.currentTarget.style.color = "#FFFFFF";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "var(--text-on-dark-muted)";
+          }}
+        >
           Sign out
         </button>
       </div>

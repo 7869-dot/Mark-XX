@@ -19,9 +19,20 @@ const API_BASE =
   "/api";
 
 const TOKEN_KEY = "axolot_token";
+const ACTIVE_AGENT_KEY = "axolot_active_agent_id";
 
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
+}
+
+/** The id the agent switcher last selected (or null = use primary). */
+export function getActiveAgentId(): string | null {
+  return localStorage.getItem(ACTIVE_AGENT_KEY);
+}
+
+export function setActiveAgentId(id: string | null) {
+  if (id) localStorage.setItem(ACTIVE_AGENT_KEY, id);
+  else localStorage.removeItem(ACTIVE_AGENT_KEY);
 }
 
 export function setAccessToken(access: string) {
@@ -106,6 +117,13 @@ async function rawRequest(
     ...(fetchInit.headers as Record<string, string> | undefined),
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Multi-agent: every request carries the active-agent header when set, so
+  // chat + tools speak in the selected agent's voice. Backend ignores it on
+  // user-scoped endpoints; ownership checks live in resolve_active_agent.
+  const activeAgent = getActiveAgentId();
+  if (activeAgent && !headers["X-Agent-Id"]) {
+    headers["X-Agent-Id"] = activeAgent;
+  }
   return fetch(`${API_BASE}${path}`, {
     ...fetchInit,
     headers,
@@ -251,6 +269,17 @@ export type ClonePreview = {
   };
   warning: string;
   template: MarketplaceTemplate;
+};
+
+export type AgentSummary = {
+  id: string;
+  name: string;
+  bio: string | null;
+  avatar_seed: string | null;
+  is_primary: boolean;
+  follower_count: number;
+  auto_post_schedule: string;
+  created_at: string | null;
 };
 
 export type ScheduleJob = {
@@ -420,6 +449,38 @@ export const api = {
     request<CloneResult>(`/marketplace/${id}/clone`, {
       method: "POST",
       body: JSON.stringify({ confirmed: true }),
+    }),
+
+  // multi-agent management
+  myAgents: () => request<{ items: AgentSummary[] }>("/agents/mine"),
+  createAgent: (payload: {
+    name: string;
+    bio?: string;
+    avatar_seed?: string;
+    personality_vector?: Record<string, number>;
+  }) =>
+    request<AgentSummary>("/agents", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  editAgent: (
+    id: string,
+    payload: Partial<{
+      name: string;
+      bio: string;
+      avatar_seed: string;
+      personality_vector: Record<string, number>;
+    }>
+  ) =>
+    request<AgentSummary>(`/agents/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  makeAgentPrimary: (id: string) =>
+    request<AgentSummary>(`/agents/${id}/make-primary`, { method: "PUT" }),
+  deleteAgent: (id: string) =>
+    request<{ deleted: boolean; id: string }>(`/agents/${id}`, {
+      method: "DELETE",
     }),
 
   // schedule — per-agent proactive behaviors

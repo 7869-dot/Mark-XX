@@ -1,36 +1,80 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Axolot design tokens — "McKinsey × Notion" professional palette.
+ *
+ * The legacy biopunk variable names (--bg-void, --teal-bright, etc.) are kept
+ * as aliases pointing at the new pro palette so existing pages inherit the
+ * redesign without touching every component. New code should reference the
+ * canonical names (--bg-primary, --accent-primary, ...). */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg-void: #080B0F;
-  --bg-surface: #0D1117;
-  --bg-elevated: #141B24;
-  --bg-overlay: #1C2632;
+  color-scheme: light;
 
-  --teal-dim: #0B3D3A;
-  --teal-mid: #0F7A6B;
-  --teal-bright: #14D4B2;
-  --teal-glow: rgba(20, 212, 178, 0.15);
+  /* === Canonical palette (new) === */
+  --bg-primary:    #F7F6F3; /* warm off-white page background */
+  --bg-secondary:  #FFFFFF;
+  --bg-tertiary:   #FAFAF8; /* table stripes, subtle wells */
+  --bg-sidebar:    #1C1C1E; /* near-black sidebar, Notion-style */
+  --bg-sidebar-hover: #2A2A2D;
+  --bg-overlay-scrim: rgba(20, 22, 27, 0.45);
 
-  --coral-dim: #3D1A0B;
-  --coral-mid: #C44A1A;
-  --coral-bright: #FF7043;
-  --coral-glow: rgba(255, 112, 67, 0.12);
+  --text-primary:   #1A1A1A;
+  --text-secondary: #6B6B6B;
+  --text-muted:     #9A9A9A;
+  --text-on-dark:   #F0EDE8;
+  --text-on-dark-muted: #A0A0A5;
 
-  --amber-bright: #FFB300;
+  --accent-primary:        #1B4FD8;  /* McKinsey/BCG blue — authority */
+  --accent-primary-hover:  #1644BD;
+  --accent-primary-soft:   rgba(27, 79, 216, 0.10);
+  --accent-secondary:      #D4A017;  /* muted gold — premium */
+  --accent-secondary-soft: rgba(212, 160, 23, 0.12);
+  --accent-success:        #1A7F5A;  /* dark green */
+  --accent-success-soft:   rgba(26, 127, 90, 0.10);
+  --accent-danger:         #B3261E;  /* restrained red for errors */
+  --accent-danger-soft:    rgba(179, 38, 30, 0.08);
 
-  --text-primary: #E8EDF3;
-  --text-secondary: #7A8A9E;
-  --text-muted: #3D4E61;
-  --text-accent: #14D4B2;
+  --border:        #E2DFD8;
+  --border-strong: #C8C4BC;
+  --shadow-sm: 0 1px 2px rgba(15, 17, 22, 0.04);
+  --shadow:    0 2px 12px rgba(15, 17, 22, 0.06);
+  --shadow-lg: 0 8px 32px rgba(15, 17, 22, 0.10);
 
-  --border-subtle: rgba(255,255,255,0.06);
-  --border-default: rgba(255,255,255,0.10);
-  --border-active: rgba(20, 212, 178, 0.4);
+  /* Typography */
+  --font-display: 'DM Serif Display', 'Georgia', serif;       /* editorial gravitas */
+  --font-body:    'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-data:    'IBM Plex Mono', ui-monospace, monospace;
 
-  --font-display: 'Space Mono', monospace;
-  --font-body: 'DM Sans', sans-serif;
-  --font-data: 'JetBrains Mono', monospace;
+  /* === Legacy aliases — keep existing pages working === */
+  --bg-void:     var(--bg-primary);
+  --bg-surface:  var(--bg-secondary);
+  --bg-elevated: var(--bg-secondary);
+  --bg-overlay:  var(--bg-tertiary);
+
+  --teal-dim:    rgba(27, 79, 216, 0.08);
+  --teal-mid:    var(--accent-primary);
+  --teal-bright: var(--accent-primary);
+  --teal-glow:   rgba(27, 79, 216, 0.18);
+
+  --coral-dim:    var(--accent-danger-soft);
+  --coral-mid:    var(--accent-danger);
+  --coral-bright: var(--accent-danger);
+  --coral-glow:   rgba(179, 38, 30, 0.18);
+
+  --amber-bright: var(--accent-secondary);
+
+  --text-accent: var(--accent-primary);
+
+  --border-subtle: var(--border);
+  --border-default: var(--border);
+  --border-active: var(--accent-primary);
 }
 
 * { box-sizing: border-box; }
-body { background: var(--bg-void); color: var(--text-primary); font-family: var(--font-body); margin: 0; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

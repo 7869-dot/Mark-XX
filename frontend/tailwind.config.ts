@@ -1,52 +1,67 @@
 import type { Config } from "tailwindcss";
 
-// Palette names kept stable so existing utility classes inherit the Biopunk
-// Terminal look without per-page rewrites. Values map to tokens.css.
+/* Legacy color names (ink, cyan, teal, amber, coral, silver, rose) are kept so
+ * existing utility classes don't break — but every value now points at the new
+ * professional "McKinsey × Notion" palette. The semantic mapping:
+ *   - any "ink" / dark background → light off-white surfaces
+ *   - any "cyan" / "teal" accent  → McKinsey blue
+ *   - "amber"                     → muted gold
+ *   - "coral" / "rose"            → restrained danger red
+ *   - "silver"                    → secondary text grey
+ * New code should prefer the explicit names: paper, ink, accent, gold, success.
+ */
+const ACCENT = "#1B4FD8";
+const ACCENT_HOVER = "#1644BD";
+const GOLD = "#D4A017";
+const SUCCESS = "#1A7F5A";
+const DANGER = "#B3261E";
+const TEXT_PRIMARY = "#1A1A1A";
+const TEXT_SECONDARY = "#6B6B6B";
+const TEXT_MUTED = "#9A9A9A";
+const PAPER = "#F7F6F3";
+const PAPER_2 = "#FFFFFF";
+const PAPER_3 = "#FAFAF8";
+const BORDER = "#E2DFD8";
+const SIDEBAR = "#1C1C1E";
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
+        // New explicit names
+        paper: { DEFAULT: PAPER, surface: PAPER_2, alt: PAPER_3 },
+        sidebar: { DEFAULT: SIDEBAR, hover: "#2A2A2D" },
+        accent: { DEFAULT: ACCENT, hover: ACCENT_HOVER, soft: "rgba(27,79,216,0.10)" },
+        gold: { DEFAULT: GOLD, soft: "rgba(212,160,23,0.12)" },
+        success: { DEFAULT: SUCCESS, soft: "rgba(26,127,90,0.10)" },
+        danger: { DEFAULT: DANGER, soft: "rgba(179,38,30,0.08)" },
+
+        // Legacy aliases — values remapped to the new palette
         ink: {
-          950: "#050709",
-          900: "#080B0F", // --bg-void
-          800: "#0D1117", // --bg-surface
-          700: "#141B24", // --bg-elevated
-          600: "#1C2632", // --bg-overlay
-          500: "#2A3A48",
+          950: PAPER_2,
+          900: PAPER,
+          800: PAPER_2,
+          700: PAPER_3,
+          600: PAPER_3,
+          500: BORDER,
         },
-        cyan: {
-          axo: "#14D4B2", // --teal-bright
-        },
-        teal: {
-          dim: "#0B3D3A",
-          mid: "#0F7A6B",
-          bright: "#14D4B2",
-        },
-        amber: {
-          axo: "#FFB300", // --amber-bright
-        },
-        coral: {
-          dim: "#3D1A0B",
-          mid: "#C44A1A",
-          bright: "#FF7043",
-        },
-        silver: {
-          axo: "#7A8A9E", // --text-secondary
-        },
-        rose: {
-          axo: "#FF7043", // --coral-bright
-        },
+        cyan: { axo: ACCENT },
+        teal: { dim: "rgba(27,79,216,0.08)", mid: ACCENT, bright: ACCENT },
+        amber: { axo: GOLD },
+        coral: { dim: "rgba(179,38,30,0.06)", mid: DANGER, bright: DANGER },
+        silver: { axo: TEXT_SECONDARY },
+        rose: { axo: DANGER },
       },
       textColor: {
-        primary: "#E8EDF3",
-        secondary: "#7A8A9E",
-        muted: "#3D4E61",
+        primary: TEXT_PRIMARY,
+        secondary: TEXT_SECONDARY,
+        muted: TEXT_MUTED,
       },
       fontFamily: {
-        display: ["'Space Mono'", "ui-monospace", "monospace"],
-        body: ["'DM Sans'", "ui-sans-serif", "system-ui"],
-        mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
+        display: ["'DM Serif Display'", "Georgia", "serif"],
+        body: ["'IBM Plex Sans'", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["'IBM Plex Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       fontVariantNumeric: {
         tabular: "tabular-nums",
@@ -82,14 +97,14 @@ export default {
         },
       },
       boxShadow: {
-        glow: "0 0 20px rgba(20, 212, 178, 0.15)",
-        "glow-strong": "0 0 24px rgba(20, 212, 178, 0.30)",
-        amber: "0 0 24px rgba(255, 179, 0, 0.22)",
-        coral: "0 0 20px rgba(255, 112, 67, 0.18)",
+        glow: "0 2px 12px rgba(15,17,22,0.06)",
+        "glow-strong": "0 8px 32px rgba(15,17,22,0.10)",
+        amber: "0 2px 12px rgba(212,160,23,0.18)",
+        coral: "0 2px 12px rgba(179,38,30,0.12)",
       },
       backgroundImage: {
         grid:
-          "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
+          "linear-gradient(rgba(15,17,22,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(15,17,22,0.04) 1px, transparent 1px)",
       },
     },
   },
