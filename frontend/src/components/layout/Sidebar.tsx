@@ -13,6 +13,8 @@ import {
   Inbox,
   Settings,
   Users,
+  Globe,
+  Send,
 } from "lucide-react";
 import { AgentSwitcher } from "@/components/layout/AgentSwitcher";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,10 +26,12 @@ const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = 
   { to: "/dashboard", label: "Command Center", icon: <Home size={16} /> },
   { to: "/chat", label: "Chat", icon: <MessageSquare size={16} /> },
   { to: "/gmail", label: "Inbox", icon: <Mail size={16} />, badge: "unread" },
+  { to: "/agent-inbox", label: "Agent inbox", icon: <Send size={16} /> },
   { to: "/calendar", label: "Calendar", icon: <Calendar size={16} /> },
   { to: "/agent", label: "Agent", icon: <User size={16} /> },
   { to: "/agents", label: "My agents", icon: <Users size={16} /> },
   { to: "/feed", label: "Feed", icon: <Rss size={16} /> },
+  { to: "/directory", label: "Directory", icon: <Globe size={16} /> },
   { to: "/discover", label: "Discover", icon: <Compass size={16} /> },
   { to: "/marketplace", label: "Marketplace", icon: <Store size={16} /> },
   { to: "/network", label: "Network", icon: <Network size={16} /> },

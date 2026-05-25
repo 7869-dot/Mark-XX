@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { ActivityFeed } from "@/components/feed/ActivityFeed";
 import { TaskCreatePanel } from "@/components/tasks/TaskCreatePanel";
 import { StatCard } from "@/components/ui/StatCard";
 import { TaskStatusBadge } from "@/components/tasks/TaskStatusBadge";
 import { IntegrationWidgets } from "@/components/dashboard/IntegrationWidgets";
+import { EmailIntelligence } from "@/components/dashboard/EmailIntelligence";
+import { AgentActivityLog } from "@/components/dashboard/AgentActivityLog";
+import { AvailabilityPicker } from "@/components/agent/AvailabilityPicker";
 import type { AgentStats, Task } from "@/types";
 
 export function DashboardPage() {
@@ -30,14 +32,20 @@ export function DashboardPage() {
     return () => clearInterval(id);
   }, []);
 
-  const active = tasks.filter((t) => t.status === "running" || t.status === "queued");
+  const active = tasks.filter(
+    (t) => t.status === "running" || t.status === "queued"
+  );
   const awaiting = tasks.filter((t) => t.status === "awaiting_human");
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_320px] gap-0 min-h-[calc(100vh-3.5rem)]">
-      {/* LEFT — Stats column */}
-      <div className="hidden xl:flex flex-col gap-3 p-4 border-r border-ink-700/50">
-        <span className="label-mono">SIGNAL</span>
+    <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_320px] gap-0 h-full">
+      {/* LEFT — Availability + Stats column */}
+      <div
+        className="hidden xl:flex flex-col gap-3 p-4 overflow-y-auto"
+        style={{ borderRight: "1px solid var(--border)" }}
+      >
+        <AvailabilityPicker />
+        <span className="label-mono mt-2">Signal</span>
         <StatCard label="Tasks today" value={stats?.tasks_today ?? 0} tone="cyan" />
         <StatCard label="This week" value={stats?.tasks_week ?? 0} />
         <StatCard label="All time" value={stats?.tasks_total ?? 0} />
@@ -55,13 +63,16 @@ export function DashboardPage() {
         />
       </div>
 
-      {/* CENTER — Activity feed */}
-      <div className="px-4 py-5 lg:px-8 lg:py-6 max-w-4xl w-full mx-auto">
+      {/* CENTER — Email Intelligence + Activity */}
+      <div className="px-4 py-5 lg:px-8 lg:py-6 max-w-4xl w-full mx-auto overflow-y-auto">
         <div className="flex items-end justify-between mb-5">
           <div>
-            <span className="label-mono">LIVE ACTIVITY</span>
-            <h1 className="font-display text-white text-2xl mt-1">
-              {agent?.name}'s feed
+            <span className="label-mono">Command center</span>
+            <h1
+              className="text-3xl mt-1"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              {agent?.name}'s desk
             </h1>
           </div>
           <button onClick={() => setCreateOpen(true)} className="btn-primary">
@@ -69,16 +80,26 @@ export function DashboardPage() {
           </button>
         </div>
         <IntegrationWidgets />
-        <ActivityFeed />
+        <EmailIntelligence />
+        <AgentActivityLog />
       </div>
 
-      {/* RIGHT — Queue + quick create */}
-      <div className="hidden lg:flex flex-col gap-4 p-4 border-l border-ink-700/50">
+      {/* RIGHT — Queue + approvals */}
+      <div
+        className="hidden lg:flex flex-col gap-4 p-4 overflow-y-auto"
+        style={{ borderLeft: "1px solid var(--border)" }}
+      >
         <div>
-          <span className="label-mono">QUEUE</span>
+          <span className="label-mono">Queue</span>
           <div className="mt-2 space-y-2">
             {active.length === 0 && (
-              <p className="font-mono text-xs text-silver-axo/60 panel p-3">
+              <p
+                className="text-xs panel p-3"
+                style={{
+                  color: "var(--text-muted)",
+                  fontFamily: "var(--font-data)",
+                }}
+              >
                 Nothing in flight.
               </p>
             )}
@@ -86,11 +107,23 @@ export function DashboardPage() {
               <div key={t.id} className="panel p-3">
                 <div className="flex items-center justify-between mb-1">
                   <TaskStatusBadge status={t.status} />
-                  <span className="font-mono text-[10px] text-silver-axo/60">
+                  <span
+                    className="text-[10px]"
+                    style={{
+                      color: "var(--text-muted)",
+                      fontFamily: "var(--font-data)",
+                    }}
+                  >
                     {t.task_type}
                   </span>
                 </div>
-                <div className="font-display text-white text-xs leading-tight">
+                <div
+                  className="text-xs leading-tight"
+                  style={{
+                    fontFamily: "var(--font-body)",
+                    color: "var(--text-primary)",
+                  }}
+                >
                   {t.title}
                 </div>
               </div>
@@ -100,15 +133,29 @@ export function DashboardPage() {
 
         {awaiting.length > 0 && (
           <div>
-            <span className="label-mono text-amber-axo">AWAITING YOU</span>
+            <span
+              className="label-mono"
+              style={{ color: "var(--accent-secondary)" }}
+            >
+              Awaiting you
+            </span>
             <div className="mt-2 space-y-2">
               {awaiting.slice(0, 3).map((t) => (
                 <a
                   key={t.id}
                   href="/inbox"
-                  className="panel p-3 block border-amber-axo/30 hover:border-amber-axo/50 transition"
+                  className="panel p-3 block transition"
+                  style={{
+                    borderColor: "var(--accent-secondary)",
+                  }}
                 >
-                  <div className="font-display text-white text-xs leading-tight">
+                  <div
+                    className="text-xs leading-tight"
+                    style={{
+                      fontFamily: "var(--font-body)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
                     {t.title}
                   </div>
                 </a>
@@ -118,11 +165,18 @@ export function DashboardPage() {
         )}
 
         <div>
-          <span className="label-mono">UPCOMING JOBS</span>
-          <ul className="mt-2 panel p-3 font-mono text-[11px] text-silver-axo space-y-1">
+          <span className="label-mono">Upcoming jobs</span>
+          <ul
+            className="mt-2 panel p-3 text-[11px] space-y-1"
+            style={{
+              fontFamily: "var(--font-data)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <li>· Email classification — every 30m</li>
+            <li>· A2A inbox sweep — every 5m</li>
             <li>· Heartbeat — every 15m</li>
             <li>· Goal check — daily 8:00</li>
-            <li>· Network scan — every 6h</li>
             <li>· Daily digest — 19:00</li>
           </ul>
         </div>

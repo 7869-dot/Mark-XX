@@ -13,7 +13,7 @@ from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
     auth, agent, tasks, network, memory, system, integrations, chat, social,
-    onboarding, schedule, marketplace,
+    onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -168,6 +168,9 @@ app.include_router(social.router)
 app.include_router(onboarding.router)
 app.include_router(schedule.router)
 app.include_router(marketplace.router)
+app.include_router(agents.router)
+app.include_router(email_intel.router)
+app.include_router(a2a_inbox.router)
 
 
 @app.get("/")

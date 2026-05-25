@@ -206,6 +206,58 @@ export type ChatMessage = {
   created_at: string;
 };
 
+export type EmailCategory =
+  | "URGENT_HUMAN"
+  | "INFORMATIONAL"
+  | "SPAM"
+  | "AGENT_HANDLEABLE";
+
+export type ClassifiedEmailRow = {
+  id: string;
+  email_id: string;
+  thread_id: string | null;
+  sender: string;
+  sender_email: string;
+  subject: string;
+  snippet: string;
+  category: EmailCategory;
+  reason: string;
+  suggested_action: string | null;
+  drafted_reply: string | null;
+  draft_status: "pending" | "approved" | "edited" | "discarded" | "sent";
+  dismissed: boolean;
+  created_at: string;
+};
+
+export type AgentMessageItem = {
+  id: string;
+  from_me: boolean;
+  content: string;
+  created_at: string;
+  read: boolean;
+  processed: boolean;
+};
+
+export type AgentMessageThread = {
+  thread_id: string;
+  other_agent: { id: string; name: string; avatar_seed: string };
+  preview: string;
+  unread_count: number;
+  message_count: number;
+  last_at: string;
+  messages: AgentMessageItem[];
+};
+
+export type AgentAvailabilityValue = "always_on" | "business_hours" | "dnd";
+
+export type AgentActivityItem = {
+  id: string;
+  action_type: string;
+  description: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
 export type SocialAgentCard = {
   id: string;
   name: string;
@@ -482,6 +534,72 @@ export const api = {
     request<{ deleted: boolean; id: string }>(`/agents/${id}`, {
       method: "DELETE",
     }),
+
+  // email intelligence
+  classifiedEmails: () =>
+    request<{
+      urgent_count: number;
+      drafts_count: number;
+      urgent: ClassifiedEmailRow[];
+      drafts: ClassifiedEmailRow[];
+      informational: ClassifiedEmailRow[];
+    }>("/emails/classified"),
+  refreshClassifications: () =>
+    request<{ classified: number }>("/emails/refresh", { method: "POST" }),
+  editEmailDraft: (id: string, body: string) =>
+    request<ClassifiedEmailRow>(`/emails/${id}/draft/edit`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+  approveEmailDraft: (id: string) =>
+    request<ClassifiedEmailRow>(`/emails/${id}/draft/approve`, {
+      method: "POST",
+    }),
+  discardEmailDraft: (id: string) =>
+    request<ClassifiedEmailRow>(`/emails/${id}/draft/discard`, {
+      method: "POST",
+    }),
+  dismissEmail: (id: string) =>
+    request<{ dismissed: boolean }>(`/emails/${id}/dismiss`, {
+      method: "POST",
+    }),
+
+  // A2A async messaging
+  agentMessages: () =>
+    request<{
+      agent_id: string;
+      agent_name: string;
+      unread_count: number;
+      thread_count: number;
+      threads: AgentMessageThread[];
+    }>("/agent/messages"),
+  sendAgentMessage: (recipient_agent_id: string, content: string, thread_id?: string) =>
+    request<{
+      id: string;
+      thread_id: string;
+      created_at: string;
+      hold_until: string | null;
+    }>("/agent/send-message", {
+      method: "POST",
+      body: JSON.stringify({ recipient_agent_id, content, thread_id }),
+    }),
+  markThreadRead: (thread_id: string) =>
+    request<{ marked_read: number }>(`/agent/messages/${thread_id}/mark-read`, {
+      method: "POST",
+    }),
+
+  // availability
+  getAvailability: () =>
+    request<{ availability: AgentAvailabilityValue }>("/agent/availability"),
+  setAvailability: (availability: AgentAvailabilityValue) =>
+    request<{ availability: AgentAvailabilityValue }>("/agent/availability", {
+      method: "PUT",
+      body: JSON.stringify({ availability }),
+    }),
+
+  // agent activity log
+  agentActivity: () =>
+    request<{ agent_id: string; items: AgentActivityItem[] }>("/agent/activity"),
 
   // schedule — per-agent proactive behaviors
   getSchedule: (agentId: string) =>

@@ -1,0 +1,85 @@
+/** Compact toggle for the active agent's availability window.
+ *
+ * Three states: always_on (green), business_hours (gold), dnd (grey). Lives
+ * on the dashboard and the agent profile page. Persists immediately to the
+ * backend via /agent/availability — no save button.
+ */
+import { useEffect, useState } from "react";
+import { api, type AgentAvailabilityValue } from "@/lib/api";
+import { pushToast } from "@/lib/toast";
+
+const OPTIONS: { value: AgentAvailabilityValue; label: string; color: string }[] = [
+  { value: "always_on", label: "Always on", color: "#1A7F5A" },
+  { value: "business_hours", label: "Business hours", color: "#D4A017" },
+  { value: "dnd", label: "Do not disturb", color: "#9A9A9A" },
+];
+
+export function AvailabilityPicker() {
+  const [value, setValue] = useState<AgentAvailabilityValue | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api
+      .getAvailability()
+      .then((res) => setValue(res.availability))
+      .catch(() => setValue("always_on"));
+  }, []);
+
+  const choose = async (next: AgentAvailabilityValue) => {
+    if (next === value) return;
+    setSaving(true);
+    setValue(next);
+    try {
+      await api.setAvailability(next);
+      pushToast(`Availability: ${OPTIONS.find((o) => o.value === next)?.label}`);
+    } catch {
+      /* toast already pushed; let the error propagate by reverting */
+      const prev = value;
+      setValue(prev);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="panel p-3">
+      <div
+        className="text-[11px] uppercase tracking-wider mb-2"
+        style={{
+          color: "var(--text-secondary)",
+          fontFamily: "var(--font-data)",
+        }}
+      >
+        Agent availability
+      </div>
+      <div className="flex gap-1.5">
+        {OPTIONS.map((o) => {
+          const active = o.value === value;
+          return (
+            <button
+              key={o.value}
+              onClick={() => choose(o.value)}
+              disabled={saving}
+              className="flex-1 text-[12px] px-2.5 py-1.5 rounded-md inline-flex items-center justify-center gap-1.5 transition"
+              style={{
+                background: active ? "var(--accent-primary-soft)" : "var(--bg-tertiary)",
+                border: active
+                  ? "1px solid var(--accent-primary)"
+                  : "1px solid var(--border)",
+                color: active ? "var(--accent-primary)" : "var(--text-primary)",
+                fontFamily: "var(--font-body)",
+                fontWeight: active ? 600 : 400,
+              }}
+            >
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full"
+                style={{ background: o.color }}
+              />
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

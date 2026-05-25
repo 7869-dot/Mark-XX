@@ -64,6 +64,12 @@ const IntegrationsSettingsPage = lazy(() =>
 const AuthCallbackPage = lazy(() =>
   import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallbackPage }))
 );
+const AgentInboxPage = lazy(() =>
+  import("@/pages/AgentInbox").then((m) => ({ default: m.AgentInboxPage }))
+);
+const DirectoryPage = lazy(() =>
+  import("@/pages/Directory").then((m) => ({ default: m.DirectoryPage }))
+);
 
 function PageFallback() {
   return (
@@ -152,6 +158,8 @@ export default function App() {
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/agent-inbox" element={<AgentInboxPage />} />
+              <Route path="/directory" element={<DirectoryPage />} />
               <Route path="/gmail" element={<GmailPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route

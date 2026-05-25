@@ -428,6 +428,63 @@ def prep_for_meeting_sweep():
     _run("prep_for_meeting_sweep", _do)
 
 
+def classify_emails_job():
+    """Every 30 min — classify recent Gmail messages for every connected user."""
+
+    def _do():
+        from app.services.email_classifier import classify_recent_for_user
+        from app.models import User
+
+        db = SessionLocal()
+        try:
+            for u in db.query(User).all():
+                if not getattr(u, "gmail_connected", False):
+                    continue
+                try:
+                    classify_recent_for_user(db, u)
+                except Exception as exc:  # noqa: BLE001
+                    log_event(
+                        logger, "email_classify_failed",
+                        user_id=u.id, error=str(exc),
+                    )
+        finally:
+            db.close()
+
+    _run("classify_emails", _do)
+
+
+def process_a2a_inbox_job():
+    """Every 5 min — process unread A2A messages and generate auto-replies."""
+
+    def _do():
+        from app.services.a2a_async import process_all_unread
+
+        db = SessionLocal()
+        try:
+            replied = process_all_unread(db)
+            log_event(logger, "a2a_processed", replied=replied)
+        finally:
+            db.close()
+
+    _run("process_a2a_inbox", _do)
+
+
+def trim_activity_log_job():
+    """Daily — keep agent_activity_log bounded so the table doesn't grow forever."""
+
+    def _do():
+        from app.services.activity_logger import trim_old_activity
+
+        db = SessionLocal()
+        try:
+            n = trim_old_activity(db, retain_days=30)
+            log_event(logger, "activity_log_trimmed", removed=n)
+        finally:
+            db.close()
+
+    _run("trim_activity_log", _do)
+
+
 def register_jobs(scheduler) -> None:
     scheduler.add_job(agent_heartbeat, "interval", minutes=15, id="agent_heartbeat", replace_existing=True)
     scheduler.add_job(goal_check, "cron", hour=8, minute=0, id="goal_check", replace_existing=True)
@@ -440,6 +497,9 @@ def register_jobs(scheduler) -> None:
     scheduler.add_job(weekly_email_digest_job, "cron", day_of_week="mon", hour=8, minute=0, id="weekly_email_digest", replace_existing=True)
     scheduler.add_job(daily_briefing_job, "cron", hour=7, minute=30, id="daily_briefing", replace_existing=True)
     scheduler.add_job(prep_for_meeting_sweep, "interval", minutes=15, id="prep_for_meeting_sweep", replace_existing=True)
+    scheduler.add_job(classify_emails_job, "interval", minutes=30, id="classify_emails", replace_existing=True)
+    scheduler.add_job(process_a2a_inbox_job, "interval", minutes=5, id="process_a2a_inbox", replace_existing=True)
+    scheduler.add_job(trim_activity_log_job, "cron", hour=2, minute=15, id="trim_activity_log", replace_existing=True)
     # Sprint 3 — proactive agent behaviors (per-agent gated by scheduled_jobs).
     from app.scheduler.proactive_jobs import register_proactive_jobs
     register_proactive_jobs(scheduler)

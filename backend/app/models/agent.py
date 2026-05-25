@@ -31,6 +31,18 @@ class AgentStatus(str, enum.Enum):
     sleeping = "sleeping"
 
 
+class AgentAvailability(str, enum.Enum):
+    """User-controlled availability window for proactive behaviors + A2A.
+
+    - always_on:      agent acts at any hour; A2A processed immediately.
+    - business_hours: agent acts 9–18 local; A2A held outside window.
+    - dnd:            agent suppresses proactive output; A2A batched until lifted.
+    """
+    always_on = "always_on"
+    business_hours = "business_hours"
+    dnd = "dnd"
+
+
 DEFAULT_PERSONALITY = {
     "openness": 0.5,
     "directness": 0.5,
@@ -85,6 +97,15 @@ class Agent(Base):
     system_prompt = Column(Text, nullable=True)
     # 'off' | 'daily' | 'weekly' — drives the auto_post scheduler job.
     auto_post_schedule = Column(String, default="off", nullable=False)
+    # User-controlled availability — gates proactive jobs + A2A processing.
+    # New rows default to always_on; existing rows backfill via create_all (no
+    # migration step needed because SQLite/PG accept NULL for older rows that
+    # never had this column — the read path normalizes None to always_on).
+    availability = Column(
+        Enum(AgentAvailability),
+        default=AgentAvailability.always_on,
+        nullable=True,
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
 
