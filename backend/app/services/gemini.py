@@ -227,7 +227,7 @@ def generate(prompt: str, response_format: str = "text") -> str:
             import google.generativeai as genai  # type: ignore
 
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20")
+            model = genai.GenerativeModel("gemini-3.1-flash-lite")
             response = model.generate_content(prompt)
             latency_ms = round((time.perf_counter() - start) * 1000, 1)
             log_event(
@@ -288,7 +288,7 @@ def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> st
         import google.generativeai as genai  # type: ignore
 
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20", tools=tools)
+        model = genai.GenerativeModel("gemini-3.1-flash-lite", tools=tools)
         chat = model.start_chat(enable_automatic_function_calling=True)
         response = chat.send_message(prompt)
         text = (getattr(response, "text", "") or "").strip()
@@ -336,7 +336,7 @@ def ping() -> bool:
         import google.generativeai as genai  # type: ignore
 
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20")
+        model = genai.GenerativeModel("gemini-3.1-flash-lite")
         model.generate_content("ping")
         return True
     except Exception:  # noqa: BLE001
