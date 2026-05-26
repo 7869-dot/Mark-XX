@@ -2,18 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Light-mode scrollbar — subtle, no glow. */
+/* Dark-mode scrollbar — subtle, no glow. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(15, 17, 22, 0.12);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 6px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(15, 17, 22, 0.22); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.16); }
 
 ::selection {
-  background: var(--accent-primary-soft);
-  color: var(--accent-primary);
+  background: var(--accent-blue-soft);
+  color: var(--text-primary);
 }
 
 h1, h2, h3, h4 {
@@ -22,27 +22,26 @@ h1, h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
-/* `.page-container` — the canonical scrolling wrapper for any page that
- * needs its own scroll context (Chat, Inbox, Email Intelligence, etc.).
- * Use this when AppShell's <main> overflow alone isn't enough. */
+/* Canonical scrolling wrapper for any page that needs its own scroll
+   context (Chat, Inbox, etc.). */
 .page-container {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
-  background: var(--bg-primary);
+  background: var(--bg-base);
 }
 
 @layer components {
   .panel {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: 10px;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 150ms ease, border-color 150ms ease;
   }
   .panel-inset {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
   }
   .panel-hover:hover,
@@ -59,44 +58,45 @@ h1, h2, h3, h4 {
   }
   .btn-primary {
     @apply btn;
-    background: var(--accent-primary);
-    color: #FFFFFF;
+    background: var(--accent-blue);
+    color: var(--text-on-accent);
   }
   .btn-primary:hover {
-    background: var(--accent-primary-hover);
-    box-shadow: var(--shadow);
+    background: var(--accent-blue-hover);
   }
   .btn-primary:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
-    box-shadow: none;
   }
   .btn-amber {
     @apply btn;
-    background: var(--accent-secondary-soft);
-    border-color: var(--accent-secondary);
-    color: #8A6810;
+    background: var(--accent-gold-soft);
+    border-color: var(--accent-gold);
+    color: var(--accent-gold);
   }
-  .btn-amber:hover { background: var(--accent-secondary); color: #FFFFFF; }
+  .btn-amber:hover {
+    background: var(--accent-gold);
+    color: var(--text-on-accent);
+  }
   .btn-ghost {
     @apply btn;
-    background: transparent;
-    border-color: var(--border);
+    background: var(--bg-elevated);
+    border-color: var(--border-default);
     color: var(--text-primary);
   }
   .btn-ghost:hover {
     border-color: var(--border-strong);
-    background: var(--bg-tertiary);
+    background: #2C2C30;
   }
   .btn-danger {
     @apply btn;
     background: transparent;
-    border-color: var(--accent-danger);
-    color: var(--accent-danger);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
   }
   .btn-danger:hover {
-    background: var(--accent-danger);
-    color: #FFFFFF;
+    background: var(--accent-red);
+    color: var(--text-on-accent);
   }
   .stat-num {
     @apply font-bold text-2xl tabular-nums;
@@ -104,7 +104,8 @@ h1, h2, h3, h4 {
     color: var(--text-primary);
   }
   .label-mono {
-    @apply text-[10px] tracking-[0.18em] uppercase;
+    @apply text-[11px] uppercase;
+    letter-spacing: 0.08em;
     font-family: var(--font-data);
     color: var(--text-secondary);
   }
@@ -114,32 +115,30 @@ h1, h2, h3, h4 {
   }
   .input {
     @apply px-3 py-2 text-sm w-full;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     color: var(--text-primary);
-    transition: border-color 150ms ease, box-shadow 150ms ease;
+    transition: border-color 150ms ease;
   }
-  .input::placeholder { color: var(--text-muted); }
+  .input::placeholder { color: var(--text-tertiary); }
   .input:focus {
     outline: none;
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px var(--accent-primary-soft);
+    border-color: var(--border-strong);
   }
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]
            tracking-wider uppercase border;
     font-family: var(--font-data);
-    background: var(--bg-tertiary);
-    border-color: var(--border);
+    background: var(--bg-elevated);
+    border-color: var(--border-default);
     color: var(--text-secondary);
   }
-  /* Skeleton shimmer used by lazy-loading fallbacks. */
   .skeleton {
     background: linear-gradient(90deg,
-      var(--bg-tertiary) 25%,
-      #EFEDE7 50%,
-      var(--bg-tertiary) 75%);
+      var(--bg-surface) 25%,
+      #232328 50%,
+      var(--bg-surface) 75%);
     background-size: 200% 100%;
     animation: skel 1.4s ease-in-out infinite;
     border-radius: 6px;
@@ -151,7 +150,6 @@ h1, h2, h3, h4 {
   100% { background-position: -200% 0; }
 }
 
-/* Reduced motion: respect users who turn it off in OS settings. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

@@ -1,78 +1,97 @@
-/* Axolot design tokens — "McKinsey × Notion" professional palette.
+/* Axolot design tokens — dark-first, low-eye-strain professional palette.
  *
- * The legacy biopunk variable names (--bg-void, --teal-bright, etc.) are kept
- * as aliases pointing at the new pro palette so existing pages inherit the
- * redesign without touching every component. New code should reference the
- * canonical names (--bg-primary, --accent-primary, ...). */
+ * Canonical names live up top. The bottom block keeps the legacy
+ * `--bg-primary`, `--accent-primary`, `--teal-bright`, `--coral-bright` etc.
+ * aliased to the new dark values so every page that referenced the previous
+ * palette inherits the redesign without per-page rewrites. */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
-  /* === Canonical palette (new) === */
-  --bg-primary:    #F7F6F3; /* warm off-white page background */
-  --bg-secondary:  #FFFFFF;
-  --bg-tertiary:   #FAFAF8; /* table stripes, subtle wells */
-  --bg-sidebar:    #1C1C1E; /* near-black sidebar, Notion-style */
-  --bg-sidebar-hover: #2A2A2D;
-  --bg-overlay-scrim: rgba(20, 22, 27, 0.45);
+  /* === Canonical dark palette === */
+  --bg-base:     #0F0F10;   /* page background — near black */
+  --bg-surface:  #1A1A1D;   /* cards, panels */
+  --bg-elevated: #242428;   /* modals, dropdowns, hover */
+  --bg-sidebar:  #111113;   /* sidebar — slightly darker than base */
+  --bg-warm:     #1C1A14;   /* gold/awaiting tinted surface */
 
-  --text-primary:   #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --text-muted:     #9A9A9A;
-  --text-on-dark:   #F0EDE8;
-  --text-on-dark-muted: #A0A0A5;
+  --text-primary:   #E8E6E1; /* warm white, kinder than #FFF */
+  --text-secondary: #8A8780; /* muted labels, timestamps */
+  --text-tertiary:  #4A4845; /* disabled, placeholders */
+  --text-on-accent: #FFFFFF;
 
-  --accent-primary:        #1B4FD8;  /* McKinsey/BCG blue — authority */
-  --accent-primary-hover:  #1644BD;
-  --accent-primary-soft:   rgba(27, 79, 216, 0.10);
-  --accent-secondary:      #D4A017;  /* muted gold — premium */
-  --accent-secondary-soft: rgba(212, 160, 23, 0.12);
-  --accent-success:        #1A7F5A;  /* dark green */
-  --accent-success-soft:   rgba(26, 127, 90, 0.10);
-  --accent-danger:         #B3261E;  /* restrained red for errors */
-  --accent-danger-soft:    rgba(179, 38, 30, 0.08);
+  --accent-blue:        #2563EB;
+  --accent-blue-hover:  #1D4ED8;
+  --accent-blue-muted:  #1E3A8A;
+  --accent-blue-soft:   rgba(37, 99, 235, 0.15);
 
-  --border:        #E2DFD8;
-  --border-strong: #C8C4BC;
-  --shadow-sm: 0 1px 2px rgba(15, 17, 22, 0.04);
-  --shadow:    0 2px 12px rgba(15, 17, 22, 0.06);
-  --shadow-lg: 0 8px 32px rgba(15, 17, 22, 0.10);
+  --accent-gold:        #B8860B;
+  --accent-gold-muted:  #78560A;
+  --accent-gold-soft:   rgba(184, 134, 11, 0.14);
 
-  /* Typography */
-  --font-display: 'DM Serif Display', 'Georgia', serif;       /* editorial gravitas */
+  --accent-green:       #16A34A;
+  --accent-green-soft:  rgba(22, 163, 74, 0.14);
+
+  --accent-red:         #DC2626;
+  --accent-red-soft:    rgba(220, 38, 38, 0.12);
+
+  --border-subtle:  #252528;
+  --border-default: #2E2E33;
+  --border-strong:  #3D3D44;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow:    0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.6);
+
+  /* Typography (unchanged from the pro typography pass) */
+  --font-display: 'DM Serif Display', 'Georgia', serif;
   --font-body:    'IBM Plex Sans', system-ui, -apple-system, sans-serif;
   --font-data:    'IBM Plex Mono', ui-monospace, monospace;
 
-  /* === Legacy aliases — keep existing pages working === */
-  --bg-void:     var(--bg-primary);
-  --bg-surface:  var(--bg-secondary);
-  --bg-elevated: var(--bg-secondary);
-  --bg-overlay:  var(--bg-tertiary);
+  /* === Legacy aliases — keep older pages rendering on the new palette === */
+  --bg-primary:   var(--bg-base);
+  --bg-secondary: var(--bg-surface);
+  --bg-tertiary:  var(--bg-elevated);
+  --bg-void:      var(--bg-base);
+  --bg-overlay:   var(--bg-elevated);
+  --bg-sidebar-hover: #2A2A2D;
 
-  --teal-dim:    rgba(27, 79, 216, 0.08);
-  --teal-mid:    var(--accent-primary);
-  --teal-bright: var(--accent-primary);
-  --teal-glow:   rgba(27, 79, 216, 0.18);
+  --text-muted:        var(--text-secondary);
+  --text-on-dark:       var(--text-primary);
+  --text-on-dark-muted: var(--text-secondary);
 
-  --coral-dim:    var(--accent-danger-soft);
-  --coral-mid:    var(--accent-danger);
-  --coral-bright: var(--accent-danger);
-  --coral-glow:   rgba(179, 38, 30, 0.18);
+  --accent-primary:        var(--accent-blue);
+  --accent-primary-hover:  var(--accent-blue-hover);
+  --accent-primary-soft:   var(--accent-blue-soft);
+  --accent-secondary:      var(--accent-gold);
+  --accent-secondary-soft: var(--accent-gold-soft);
+  --accent-success:        var(--accent-green);
+  --accent-success-soft:   var(--accent-green-soft);
+  --accent-danger:         var(--accent-red);
+  --accent-danger-soft:    var(--accent-red-soft);
 
-  --amber-bright: var(--accent-secondary);
+  --teal-dim:    var(--accent-blue-soft);
+  --teal-mid:    var(--accent-blue);
+  --teal-bright: var(--accent-blue);
+  --teal-glow:   var(--accent-blue-soft);
 
-  --text-accent: var(--accent-primary);
+  --coral-dim:    var(--accent-red-soft);
+  --coral-mid:    var(--accent-red);
+  --coral-bright: var(--accent-red);
+  --coral-glow:   var(--accent-red-soft);
 
-  --border-subtle: var(--border);
-  --border-default: var(--border);
-  --border-active: var(--accent-primary);
+  --amber-bright: var(--accent-gold);
+  --text-accent:  var(--accent-blue);
+
+  --border:        var(--border-default);
+  --border-active: var(--accent-blue);
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  background: var(--bg-primary);
+  background: var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;

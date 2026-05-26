@@ -33,10 +33,10 @@ export function PersonalityRadar({
     <div style={{ width: "100%", height }}>
       <ResponsiveContainer>
         <RadarChart data={data} outerRadius="75%">
-          <PolarGrid stroke="rgba(255,255,255,0.08)" />
+          <PolarGrid stroke="#2E2E33" />
           <PolarAngleAxis
             dataKey="axis"
-            tick={{ fill: "#8892a4", fontSize: 11, fontFamily: "IBM Plex Mono" }}
+            tick={{ fill: "#8A8780", fontSize: 11, fontFamily: "IBM Plex Mono" }}
           />
           <PolarRadiusAxis
             angle={90}
@@ -46,9 +46,9 @@ export function PersonalityRadar({
           />
           <Radar
             dataKey="value"
-            stroke="#00f5d4"
-            fill="#00f5d4"
-            fillOpacity={0.25}
+            stroke="#2563EB"
+            fill="#2563EB"
+            fillOpacity={0.3}
             strokeWidth={1.5}
           />
         </RadarChart>

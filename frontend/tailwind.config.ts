@@ -1,28 +1,24 @@
 import type { Config } from "tailwindcss";
 
-/* Legacy color names (ink, cyan, teal, amber, coral, silver, rose) are kept so
- * existing utility classes don't break — but every value now points at the new
- * professional "McKinsey × Notion" palette. The semantic mapping:
- *   - any "ink" / dark background → light off-white surfaces
- *   - any "cyan" / "teal" accent  → McKinsey blue
- *   - "amber"                     → muted gold
- *   - "coral" / "rose"            → restrained danger red
- *   - "silver"                    → secondary text grey
- * New code should prefer the explicit names: paper, ink, accent, gold, success.
- */
-const ACCENT = "#1B4FD8";
-const ACCENT_HOVER = "#1644BD";
-const GOLD = "#D4A017";
-const SUCCESS = "#1A7F5A";
-const DANGER = "#B3261E";
-const TEXT_PRIMARY = "#1A1A1A";
-const TEXT_SECONDARY = "#6B6B6B";
-const TEXT_MUTED = "#9A9A9A";
-const PAPER = "#F7F6F3";
-const PAPER_2 = "#FFFFFF";
-const PAPER_3 = "#FAFAF8";
-const BORDER = "#E2DFD8";
-const SIDEBAR = "#1C1C1E";
+/* Dark-first palette. Legacy color names (ink, cyan, teal, amber, coral,
+ * silver, rose) are kept so existing utility classes don't break — but every
+ * value now points at the new dark tokens. */
+const ACCENT_BLUE = "#2563EB";
+const ACCENT_BLUE_HOVER = "#1D4ED8";
+const ACCENT_BLUE_MUTED = "#1E3A8A";
+const ACCENT_GOLD = "#B8860B";
+const ACCENT_GREEN = "#16A34A";
+const ACCENT_RED = "#DC2626";
+const TEXT_PRIMARY = "#E8E6E1";
+const TEXT_SECONDARY = "#8A8780";
+const TEXT_TERTIARY = "#4A4845";
+const BG_BASE = "#0F0F10";
+const BG_SURFACE = "#1A1A1D";
+const BG_ELEVATED = "#242428";
+const BG_SIDEBAR = "#111113";
+const BORDER_SUBTLE = "#252528";
+const BORDER_DEFAULT = "#2E2E33";
+const BORDER_STRONG = "#3D3D44";
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -30,33 +26,46 @@ export default {
     extend: {
       colors: {
         // New explicit names
-        paper: { DEFAULT: PAPER, surface: PAPER_2, alt: PAPER_3 },
-        sidebar: { DEFAULT: SIDEBAR, hover: "#2A2A2D" },
-        accent: { DEFAULT: ACCENT, hover: ACCENT_HOVER, soft: "rgba(27,79,216,0.10)" },
-        gold: { DEFAULT: GOLD, soft: "rgba(212,160,23,0.12)" },
-        success: { DEFAULT: SUCCESS, soft: "rgba(26,127,90,0.10)" },
-        danger: { DEFAULT: DANGER, soft: "rgba(179,38,30,0.08)" },
-
-        // Legacy aliases — values remapped to the new palette
-        ink: {
-          950: PAPER_2,
-          900: PAPER,
-          800: PAPER_2,
-          700: PAPER_3,
-          600: PAPER_3,
-          500: BORDER,
+        bg: { base: BG_BASE, surface: BG_SURFACE, elevated: BG_ELEVATED, sidebar: BG_SIDEBAR },
+        accent: {
+          blue: ACCENT_BLUE,
+          "blue-hover": ACCENT_BLUE_HOVER,
+          "blue-muted": ACCENT_BLUE_MUTED,
+          gold: ACCENT_GOLD,
+          green: ACCENT_GREEN,
+          red: ACCENT_RED,
         },
-        cyan: { axo: ACCENT },
-        teal: { dim: "rgba(27,79,216,0.08)", mid: ACCENT, bright: ACCENT },
-        amber: { axo: GOLD },
-        coral: { dim: "rgba(179,38,30,0.06)", mid: DANGER, bright: DANGER },
+        border: {
+          subtle: BORDER_SUBTLE,
+          DEFAULT: BORDER_DEFAULT,
+          strong: BORDER_STRONG,
+        },
+        // Legacy aliases — values remapped to the new dark palette
+        ink: {
+          950: "#070708",
+          900: BG_BASE,
+          800: BG_SURFACE,
+          700: BG_ELEVATED,
+          600: "#2C2C30",
+          500: BORDER_STRONG,
+        },
+        cyan: { axo: ACCENT_BLUE },
+        teal: { dim: "rgba(37,99,235,0.10)", mid: ACCENT_BLUE, bright: ACCENT_BLUE },
+        amber: { axo: ACCENT_GOLD },
+        coral: { dim: "rgba(220,38,38,0.10)", mid: ACCENT_RED, bright: ACCENT_RED },
         silver: { axo: TEXT_SECONDARY },
-        rose: { axo: DANGER },
+        rose: { axo: ACCENT_RED },
+        paper: { DEFAULT: BG_BASE, surface: BG_SURFACE, alt: BG_ELEVATED },
+        sidebar: { DEFAULT: BG_SIDEBAR, hover: "#2A2A2D" },
+        gold: { DEFAULT: ACCENT_GOLD, soft: "rgba(184,134,11,0.14)" },
+        success: { DEFAULT: ACCENT_GREEN, soft: "rgba(22,163,74,0.14)" },
+        danger: { DEFAULT: ACCENT_RED, soft: "rgba(220,38,38,0.12)" },
       },
       textColor: {
         primary: TEXT_PRIMARY,
         secondary: TEXT_SECONDARY,
-        muted: TEXT_MUTED,
+        muted: TEXT_TERTIARY,
+        tertiary: TEXT_TERTIARY,
       },
       fontFamily: {
         display: ["'DM Serif Display'", "Georgia", "serif"],
@@ -97,14 +106,14 @@ export default {
         },
       },
       boxShadow: {
-        glow: "0 2px 12px rgba(15,17,22,0.06)",
-        "glow-strong": "0 8px 32px rgba(15,17,22,0.10)",
-        amber: "0 2px 12px rgba(212,160,23,0.18)",
-        coral: "0 2px 12px rgba(179,38,30,0.12)",
+        glow: "0 1px 3px rgba(0,0,0,0.4)",
+        "glow-strong": "0 4px 16px rgba(0,0,0,0.5)",
+        amber: "0 4px 16px rgba(184,134,11,0.30)",
+        coral: "0 4px 16px rgba(220,38,38,0.25)",
       },
       backgroundImage: {
         grid:
-          "linear-gradient(rgba(15,17,22,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(15,17,22,0.04) 1px, transparent 1px)",
+          "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)",
       },
     },
   },

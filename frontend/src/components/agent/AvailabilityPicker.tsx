@@ -8,10 +8,35 @@ import { useEffect, useState } from "react";
 import { api, type AgentAvailabilityValue } from "@/lib/api";
 import { pushToast } from "@/lib/toast";
 
-const OPTIONS: { value: AgentAvailabilityValue; label: string; color: string }[] = [
-  { value: "always_on", label: "Always on", color: "#1A7F5A" },
-  { value: "business_hours", label: "Business hours", color: "#D4A017" },
-  { value: "dnd", label: "Do not disturb", color: "#9A9A9A" },
+const OPTIONS: {
+  value: AgentAvailabilityValue;
+  label: string;
+  dot: string;
+  /** Background when this option is selected. DND gets the danger red per spec. */
+  activeBg: string;
+  activeColor: string;
+}[] = [
+  {
+    value: "always_on",
+    label: "Always on",
+    dot: "var(--accent-green)",
+    activeBg: "var(--accent-blue)",
+    activeColor: "var(--text-on-accent)",
+  },
+  {
+    value: "business_hours",
+    label: "Business hours",
+    dot: "var(--accent-gold)",
+    activeBg: "var(--accent-blue)",
+    activeColor: "var(--text-on-accent)",
+  },
+  {
+    value: "dnd",
+    label: "Do not disturb",
+    dot: "var(--text-tertiary)",
+    activeBg: "var(--accent-red)",
+    activeColor: "var(--text-on-accent)",
+  },
 ];
 
 export function AvailabilityPicker() {
@@ -62,18 +87,18 @@ export function AvailabilityPicker() {
               disabled={saving}
               className="flex-1 text-[12px] px-2.5 py-1.5 rounded-md inline-flex items-center justify-center gap-1.5 transition"
               style={{
-                background: active ? "var(--accent-primary-soft)" : "var(--bg-tertiary)",
+                background: active ? o.activeBg : "var(--bg-elevated)",
                 border: active
-                  ? "1px solid var(--accent-primary)"
-                  : "1px solid var(--border)",
-                color: active ? "var(--accent-primary)" : "var(--text-primary)",
+                  ? `1px solid ${o.activeBg}`
+                  : "1px solid var(--border-default)",
+                color: active ? o.activeColor : "var(--text-secondary)",
                 fontFamily: "var(--font-body)",
                 fontWeight: active ? 600 : 400,
               }}
             >
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
-                style={{ background: o.color }}
+                style={{ background: active ? o.activeColor : o.dot }}
               />
               {o.label}
             </button>

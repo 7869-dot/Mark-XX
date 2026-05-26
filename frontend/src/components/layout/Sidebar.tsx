@@ -43,10 +43,10 @@ const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = 
 /** Maps the agent's lifecycle status to one of the three sidebar dot states. */
 function statusDot(status: string | undefined) {
   if (status === "thinking" || status === "processing")
-    return { color: "#D4A017", label: "Processing" };
+    return { color: "var(--accent-gold)", label: "Processing" };
   if (status === "asleep" || status === "offline")
-    return { color: "#9A9A9A", label: "Offline" };
-  return { color: "#1A7F5A", label: "Active" };
+    return { color: "var(--text-tertiary)", label: "Offline" };
+  return { color: "var(--accent-green)", label: "Active" };
 }
 
 export function Sidebar() {
@@ -79,14 +79,14 @@ export function Sidebar() {
 
       <AgentSwitcher />
 
-      <nav className="flex-1 px-3 flex flex-col gap-0.5 overflow-y-auto">
+      <nav className="flex-1 px-2 flex flex-col gap-0.5 overflow-y-auto">
         {NAV.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               classNames(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition",
+                "flex items-center gap-3 pr-3 py-2 rounded-r-md text-sm transition relative",
                 isActive ? "sidebar-nav-active" : "sidebar-nav-idle"
               )
             }
@@ -94,13 +94,17 @@ export function Sidebar() {
               isActive
                 ? {
                     fontFamily: "var(--font-body)",
-                    background: "var(--bg-sidebar-hover)",
-                    color: "#FFFFFF",
+                    background: "var(--bg-elevated)",
+                    color: "var(--text-primary)",
                     fontWeight: 500,
+                    paddingLeft: 12,
+                    borderLeft: "2px solid var(--accent-blue)",
                   }
                 : {
                     fontFamily: "var(--font-body)",
-                    color: "var(--text-on-dark-muted)",
+                    color: "var(--text-secondary)",
+                    paddingLeft: 14, // 12 + 2 to match active inset
+                    borderLeft: "2px solid transparent",
                   }
             }
           >
@@ -110,7 +114,7 @@ export function Sidebar() {
               <span
                 className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-medium"
                 style={{
-                  background: "var(--accent-primary)",
+                  background: "var(--accent-blue)",
                   color: "#FFFFFF",
                   fontFamily: "var(--font-data)",
                 }}
@@ -124,11 +128,11 @@ export function Sidebar() {
 
       <div
         className="p-4 flex items-center gap-3"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
       >
         <span
-          className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-          style={{ background: dot.color, boxShadow: `0 0 6px ${dot.color}` }}
+          className="inline-block w-2 h-2 rounded-full shrink-0"
+          style={{ background: dot.color }}
           aria-label={dot.label}
         />
         <div className="min-w-0 flex-1">
@@ -137,7 +141,7 @@ export function Sidebar() {
             style={{
               fontFamily: "var(--font-body)",
               fontWeight: 500,
-              color: "#FFFFFF",
+              color: "var(--text-primary)",
             }}
           >
             {agent.name}
@@ -146,7 +150,7 @@ export function Sidebar() {
             className="text-[11px] truncate"
             style={{
               fontFamily: "var(--font-data)",
-              color: "var(--text-on-dark-muted)",
+              color: "var(--text-secondary)",
             }}
           >
             {dot.label}
@@ -160,17 +164,17 @@ export function Sidebar() {
           className="w-full text-xs px-3 py-1.5 rounded-md transition"
           style={{
             background: "transparent",
-            border: "1px solid rgba(255,255,255,0.12)",
-            color: "var(--text-on-dark-muted)",
+            border: "1px solid var(--border-subtle)",
+            color: "var(--text-secondary)",
             fontFamily: "var(--font-body)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-            e.currentTarget.style.color = "#FFFFFF";
+            e.currentTarget.style.background = "var(--bg-elevated)";
+            e.currentTarget.style.color = "var(--text-primary)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "var(--text-on-dark-muted)";
+            e.currentTarget.style.color = "var(--text-secondary)";
           }}
         >
           Sign out
