@@ -16,8 +16,7 @@ import { Markdown } from "@/components/chat/Markdown";
 type Row = ChatMessage & { error?: boolean };
 
 const MODELS = [
-  { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash", short: "Flash" },
-  { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro", short: "Pro" },
+  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", short: "Flash" },
   { id: "gpt-4o-mini", label: "GPT-4o mini", short: "4o mini" },
   { id: "gpt-4o", label: "GPT-4o", short: "4o" },
 ];
