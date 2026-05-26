@@ -70,10 +70,19 @@ export type Task = {
 };
 
 export type AgentStats = {
+  // tasks_* are aliased server-side to activity-log counts so existing UI
+  // lights up immediately; new code should prefer actions_*.
   tasks_today: number;
   tasks_week: number;
   tasks_total: number;
+  actions_today?: number;
+  actions_week?: number;
+  actions_total?: number;
+  raw_tasks_today?: number;
+  raw_tasks_week?: number;
+  raw_tasks_total?: number;
   connections: number;
+  connection_avatars?: { id: string; name: string; avatar_seed: string }[];
   interactions_today: number;
   time_saved_minutes: number;
   time_saved_minutes_week: number;

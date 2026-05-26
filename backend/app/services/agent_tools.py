@@ -208,7 +208,8 @@ def stub_tool_response(hint: str, tools: list) -> str:
     ):
         return "Here's your upcoming schedule:\n\n" + _run("list_events")
 
-    return (
-        "I can work with your email and calendar directly — try "
-        '"check my inbox" or "what\'s on my schedule this week?"'
-    )
+    # No tool keyword matched. Return empty so the caller falls through to a
+    # plain text generate(). The previous hardcoded "try check my inbox"
+    # response was firing on every off-topic message in stub mode and being
+    # interpreted by users as "the chatbot is broken".
+    return ""

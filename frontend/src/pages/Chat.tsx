@@ -4,9 +4,10 @@ import {
   ArrowUp,
   Plus,
   ChevronDown,
-  Beaker,
   Sparkles,
   MessageSquare,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { api, type ChatMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -21,7 +22,6 @@ const MODELS = [
   { id: "gpt-4o", label: "GPT-4o", short: "4o" },
 ];
 const MODEL_KEY = "axolot_chat_model";
-const STUB_KEY = "axolot_chat_stub";
 
 /** Bucket messages into per-day "conversations" for the history sidebar.
  * A new bucket starts whenever there's a >2h gap between turns OR a new
@@ -129,16 +129,6 @@ function Bubble({ row }: { row: Row }) {
   );
 }
 
-/** Stubbed responses for the local STUB MODE — lets the UI be iterated on
- * without burning Gemini quota when the live agent is misbehaving. */
-const STUB_REPLIES = [
-  "Got it. Here's how I'd break that down:\n\n- **Step 1:** Frame the goal in one sentence.\n- **Step 2:** Pick the smallest test that proves it out.\n- **Step 3:** Set a deadline you'll actually hit.\n\nWhich one's blocking you right now?",
-  "Honestly — that sounds like something you'd want to sleep on for a night. The version I'd ship today is probably 80% of the version you'd ship next week, but the missing 20% is the only part that matters. Worth waiting.",
-  "Quick read: this is a *distribution* problem dressed up as a product problem. The thing you're building is fine. The thing you haven't built is the channel.",
-  "Here's a draft you can edit:\n\n> Hi — quick note. I've been thinking about the conversation we started on Tuesday and I have a clearer answer now. Want to grab 15 minutes Thursday?",
-  "I checked the notes from our last few threads — the pattern is that you keep deferring the boring parts of this. If we keep doing that, the deadline becomes the decision.",
-];
-
 export function ChatPage() {
   const { agent } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
@@ -148,10 +138,10 @@ export function ChatPage() {
     () => localStorage.getItem(MODEL_KEY) || MODELS[0].id
   );
   const [modelOpen, setModelOpen] = useState(false);
-  const [stubMode, setStubMode] = useState<boolean>(
-    () => localStorage.getItem(STUB_KEY) === "1"
-  );
   const [error, setError] = useState<string | null>(null);
+  // Last user message kept around so the inline error banner's "Retry"
+  // button can resend without making the user retype.
+  const [lastSent, setLastSent] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -186,9 +176,6 @@ export function ChatPage() {
   useEffect(() => {
     localStorage.setItem(MODEL_KEY, model);
   }, [model]);
-  useEffect(() => {
-    localStorage.setItem(STUB_KEY, stubMode ? "1" : "0");
-  }, [stubMode]);
 
   const scrollToBottom = (smooth = true) => {
     // Double rAF so React commits the new node and the browser lays it out
@@ -232,63 +219,58 @@ export function ChatPage() {
     taRef.current?.focus();
   };
 
-  const send = async () => {
-    const text = draft.trim();
+  const sendText = async (text: string, fromRetry: boolean = false) => {
     if (!text || sending) return;
-    setDraft("");
     setError(null);
-    requestAnimationFrame(autoSize);
+    setLastSent(text);
 
-    const optimistic: Row = {
-      id: `tmp-${Date.now()}`,
-      role: "user",
-      content: text,
-      created_at: new Date().toISOString(),
-    };
-    setRows((r) => [...r, optimistic]);
-    setSending(true);
-
-    if (stubMode) {
-      // Local stub — no network call. Simulates the UX for design iteration.
-      await new Promise((r) => setTimeout(r, 600 + Math.random() * 500));
-      const reply: Row = {
-        id: `stub-${Date.now()}`,
-        role: "agent",
-        content: STUB_REPLIES[Math.floor(Math.random() * STUB_REPLIES.length)],
+    // For a retry, the optimistic row already exists from the first attempt.
+    let optimisticId: string | null = null;
+    if (!fromRetry) {
+      const optimistic: Row = {
+        id: `tmp-${Date.now()}`,
+        role: "user",
+        content: text,
         created_at: new Date().toISOString(),
       };
-      setRows((r) => [...r, reply]);
-      setSending(false);
-      taRef.current?.focus();
-      return;
+      optimisticId = optimistic.id;
+      setRows((r) => [...r, optimistic]);
     }
+    setSending(true);
 
     try {
       const res = await api.sendChatMessage(text);
-      setRows((r) =>
-        r
-          .map((m) =>
-            m.id === optimistic.id ? { ...res.echo, id: optimistic.id } : m
-          )
-          .concat(res.reply)
-      );
+      setRows((r) => {
+        const swapped = optimisticId
+          ? r.map((m) => (m.id === optimisticId ? { ...res.echo, id: optimisticId! } : m))
+          : r;
+        return swapped.concat(res.reply);
+      });
+      setLastSent(null);
     } catch {
-      setRows((r) => [
-        ...r,
-        {
-          id: `err-${Date.now()}`,
-          role: "agent",
-          content:
-            "I couldn't reach the network just now. Check your connection and try again.",
-          created_at: new Date().toISOString(),
-          error: true,
-        },
-      ]);
-      setError("Network error — message not delivered.");
+      // No more synthetic "I couldn't reach the network" agent bubble — that
+      // pretended to be a real reply. Instead surface a real error banner
+      // with a Retry button below the input.
+      setError(
+        "Your agent couldn't respond. The backend may be down or the API key isn't configured."
+      );
     } finally {
       setSending(false);
       taRef.current?.focus();
     }
+  };
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft("");
+    requestAnimationFrame(autoSize);
+    await sendText(text, false);
+  };
+
+  const retry = async () => {
+    if (!lastSent || sending) return;
+    await sendText(lastSent, true);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -423,7 +405,7 @@ export function ChatPage() {
                 style={{
                   fontFamily: "var(--font-data)",
                   fontSize: 11,
-                  color: sending ? "var(--accent-secondary)" : "var(--accent-success)",
+                  color: sending ? "var(--accent-gold)" : "var(--accent-green)",
                 }}
               >
                 {sending ? "Thinking…" : "Online · mirrors your voice"}
@@ -432,34 +414,6 @@ export function ChatPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {stubMode && (
-              <span
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] uppercase tracking-wider"
-                style={{
-                  background: "var(--accent-secondary-soft)",
-                  color: "#8A6810",
-                  border: "1px solid var(--accent-secondary)",
-                  fontFamily: "var(--font-data)",
-                  fontWeight: 600,
-                }}
-                title="Local stub mode — no API calls"
-              >
-                <Beaker size={11} /> Stub mode
-              </span>
-            )}
-            <button
-              onClick={() => setStubMode((s) => !s)}
-              className="text-[11px] px-2 py-1 rounded-md transition"
-              style={{
-                border: "1px solid var(--border)",
-                color: "var(--text-secondary)",
-                fontFamily: "var(--font-body)",
-              }}
-              title="Toggle local stub responses"
-            >
-              {stubMode ? "Disable stubs" : "Stubs"}
-            </button>
-
             {/* Model selector */}
             <div className="relative" ref={modelMenuRef}>
               <button
@@ -599,24 +553,48 @@ export function ChatPage() {
           )}
         </div>
 
-        {/* Error banner */}
+        {/* Inline error banner with Retry — shown below the last message,
+            above the input. The agent never lies about "I couldn't reach the
+            network" any more; failures surface here and the user can resend
+            with one click. */}
         {error && (
           <div
-            className="px-6 py-2 text-xs flex items-center justify-between"
+            className="mx-6 mb-2 mt-1 px-3 py-2.5 flex items-center justify-between gap-3 rounded-md"
             style={{
               background: "var(--accent-danger-soft)",
+              border: "1px solid var(--accent-danger)",
               color: "var(--accent-danger)",
-              borderTop: "1px solid var(--accent-danger)",
+              fontFamily: "var(--font-body)",
             }}
           >
-            <span>{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="underline"
-              style={{ color: "var(--accent-danger)" }}
-            >
-              Dismiss
-            </button>
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle size={14} className="shrink-0" />
+              <span className="text-[13px] truncate">{error}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {lastSent && (
+                <button
+                  onClick={retry}
+                  disabled={sending}
+                  className="inline-flex items-center gap-1 text-[12px] px-2 py-1 rounded"
+                  style={{
+                    background: "var(--accent-danger)",
+                    color: "#FFFFFF",
+                    fontFamily: "var(--font-body)",
+                  }}
+                >
+                  <RotateCcw size={11} />
+                  Retry
+                </button>
+              )}
+              <button
+                onClick={() => setError(null)}
+                className="text-[12px] underline opacity-80 hover:opacity-100"
+                style={{ color: "var(--accent-danger)" }}
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 
@@ -631,18 +609,16 @@ export function ChatPage() {
           <div
             className="flex-1 flex items-end px-3 py-2"
             style={{
-              background: "var(--bg-primary)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              transition: "border-color 120ms ease, box-shadow 120ms ease",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-default)",
+              borderRadius: 8,
+              transition: "border-color 120ms ease",
             }}
             onFocusCapture={(e) => {
-              e.currentTarget.style.borderColor = "var(--accent-primary)";
-              e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-primary-soft)";
+              e.currentTarget.style.borderColor = "var(--border-strong)";
             }}
             onBlurCapture={(e) => {
-              e.currentTarget.style.borderColor = "var(--border)";
-              e.currentTarget.style.boxShadow = "none";
+              e.currentTarget.style.borderColor = "var(--border-default)";
             }}
           >
             <textarea

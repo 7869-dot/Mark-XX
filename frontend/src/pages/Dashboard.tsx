@@ -46,10 +46,41 @@ export function DashboardPage() {
       >
         <AvailabilityPicker />
         <span className="label-mono mt-2">Signal</span>
-        <StatCard label="Tasks today" value={stats?.tasks_today ?? 0} tone="cyan" />
-        <StatCard label="This week" value={stats?.tasks_week ?? 0} />
-        <StatCard label="All time" value={stats?.tasks_total ?? 0} />
-        <StatCard label="Connections" value={stats?.connections ?? 0} />
+        <StatCard label="Actions today" value={stats?.actions_today ?? stats?.tasks_today ?? 0} tone="cyan" />
+        <StatCard label="This week" value={stats?.actions_week ?? stats?.tasks_week ?? 0} />
+        <StatCard label="All time" value={stats?.actions_total ?? stats?.tasks_total ?? 0} />
+        <div className="panel p-3">
+          <div className="label-mono">Connections</div>
+          <div
+            className="mt-1 flex items-baseline justify-between gap-2"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            <span className="text-2xl tabular-nums" style={{ color: "var(--text-primary)" }}>
+              {stats?.connections ?? 0}
+            </span>
+            {/* Show up to 5 initials of connected agents — surfaces "who am I talking to"
+                without pulling avatars (cheap render, no extra request). */}
+            {stats?.connection_avatars && stats.connection_avatars.length > 0 && (
+              <div className="flex -space-x-1.5">
+                {stats.connection_avatars.slice(0, 5).map((c) => (
+                  <span
+                    key={c.id}
+                    title={c.name}
+                    className="inline-flex w-6 h-6 items-center justify-center rounded-full text-[10px] font-medium"
+                    style={{
+                      background: "var(--accent-blue-muted)",
+                      color: "var(--text-on-accent)",
+                      border: "2px solid var(--bg-base)",
+                      fontFamily: "var(--font-body)",
+                    }}
+                  >
+                    {c.name.trim().charAt(0).toUpperCase()}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
         <StatCard
           label="Interactions today"
           value={stats?.interactions_today ?? 0}
@@ -92,61 +123,86 @@ export function DashboardPage() {
         <div>
           <span className="label-mono">Queue</span>
           <div className="mt-2 space-y-2">
-            {active.length === 0 && (
+            {active.length === 0 ? (
               <p
                 className="text-xs panel p-3"
                 style={{
-                  color: "var(--text-muted)",
-                  fontFamily: "var(--font-data)",
+                  color: "var(--text-secondary)",
+                  fontFamily: "var(--font-body)",
                 }}
               >
-                Nothing in flight.
+                No queued tasks.
               </p>
-            )}
-            {active.map((t) => (
-              <div key={t.id} className="panel p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <TaskStatusBadge status={t.status} />
-                  <span
-                    className="text-[10px]"
+            ) : (
+              active.map((t) => (
+                <div
+                  key={t.id}
+                  className="panel p-3"
+                  style={{ borderColor: "var(--border-default)" }}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider"
+                      style={{
+                        background: "var(--bg-elevated)",
+                        color: "var(--text-secondary)",
+                        fontFamily: "var(--font-data)",
+                      }}
+                    >
+                      {t.status}
+                    </span>
+                    <span
+                      className="text-[10px]"
+                      style={{
+                        color: "var(--text-tertiary)",
+                        fontFamily: "var(--font-data)",
+                      }}
+                    >
+                      {t.task_type}
+                    </span>
+                  </div>
+                  <div
+                    className="text-xs leading-tight"
                     style={{
-                      color: "var(--text-muted)",
-                      fontFamily: "var(--font-data)",
+                      fontFamily: "var(--font-body)",
+                      color: "var(--text-primary)",
                     }}
                   >
-                    {t.task_type}
-                  </span>
+                    {t.title}
+                  </div>
                 </div>
-                <div
-                  className="text-xs leading-tight"
-                  style={{
-                    fontFamily: "var(--font-body)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {t.title}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
-        {awaiting.length > 0 && (
-          <div>
-            <span
-              className="label-mono"
-              style={{ color: "var(--accent-secondary)" }}
-            >
-              Awaiting you
-            </span>
-            <div className="mt-2 space-y-2">
-              {awaiting.slice(0, 3).map((t) => (
+        <div>
+          <span
+            className="label-mono"
+            style={{ color: "var(--accent-gold)" }}
+          >
+            Awaiting you
+          </span>
+          <div className="mt-2 space-y-2">
+            {awaiting.length === 0 ? (
+              <p
+                className="text-xs panel p-3"
+                style={{
+                  color: "var(--text-secondary)",
+                  fontFamily: "var(--font-body)",
+                }}
+              >
+                No pending approvals — your agent is on it.
+              </p>
+            ) : (
+              awaiting.slice(0, 3).map((t) => (
                 <a
                   key={t.id}
                   href="/inbox"
                   className="panel p-3 block transition"
                   style={{
-                    borderColor: "var(--accent-secondary)",
+                    borderLeft: "2px solid var(--accent-gold)",
+                    background: "var(--bg-warm)",
                   }}
                 >
                   <div
@@ -159,10 +215,10 @@ export function DashboardPage() {
                     {t.title}
                   </div>
                 </a>
-              ))}
-            </div>
+              ))
+            )}
           </div>
-        )}
+        </div>
 
         <div>
           <span className="label-mono">Upcoming jobs</span>

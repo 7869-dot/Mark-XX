@@ -6,7 +6,7 @@ from sqlalchemy import func
 
 from app.core.db import get_db
 from app.core.security import get_current_user
-from app.models import User, Agent, Task, AgentInteraction
+from app.models import User, Agent, Task, AgentInteraction, AgentActivityLog, AgentMessage
 from app.api.envelope import envelope
 from app.services.activity_feed import build_feed
 from app.services.agent_service import create_agent_for_user
@@ -101,24 +101,59 @@ def stats(db: Session = Depends(get_db), user: User = Depends(get_current_user))
     if not agent:
         raise HTTPException(status_code=404, detail="No agent")
 
-    today = datetime.utcnow() - timedelta(days=1)
-    week = datetime.utcnow() - timedelta(days=7)
+    # "Today" = midnight UTC → now, not last-24h, so users see counters reset
+    # on the day boundary like every other dashboard product. Week = last 7d.
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = now - timedelta(days=7)
 
+    # Activity-driven counters — every "the agent did X" passes through the
+    # log via activity_logger, so these are the canonical "proof of life".
+    activity_today = db.query(func.count(AgentActivityLog.id)).filter(
+        AgentActivityLog.agent_id == agent.id,
+        AgentActivityLog.created_at >= today_start,
+    ).scalar() or 0
+    activity_week = db.query(func.count(AgentActivityLog.id)).filter(
+        AgentActivityLog.agent_id == agent.id,
+        AgentActivityLog.created_at >= week_start,
+    ).scalar() or 0
+    activity_total = db.query(func.count(AgentActivityLog.id)).filter(
+        AgentActivityLog.agent_id == agent.id
+    ).scalar() or 0
+
+    # Task counters retained for the queue UI and time-saved math.
     tasks_today = db.query(func.count(Task.id)).filter(
-        Task.agent_id == agent.id, Task.created_at >= today
+        Task.agent_id == agent.id, Task.created_at >= today_start
     ).scalar() or 0
     tasks_week = db.query(func.count(Task.id)).filter(
-        Task.agent_id == agent.id, Task.created_at >= week
+        Task.agent_id == agent.id, Task.created_at >= week_start
     ).scalar() or 0
     tasks_total = db.query(func.count(Task.id)).filter(Task.agent_id == agent.id).scalar() or 0
 
     interactions_today = db.query(func.count(AgentInteraction.id)).filter(
         ((AgentInteraction.initiator_agent_id == agent.id) |
          (AgentInteraction.target_agent_id == agent.id)),
-        AgentInteraction.created_at >= today,
+        AgentInteraction.created_at >= today_start,
     ).scalar() or 0
 
-    connections = len(agent.social_graph or [])
+    # Connections = distinct other agents this agent has actually exchanged
+    # A2A messages with. social_graph is legacy and almost always empty.
+    sender_ids = db.query(AgentMessage.sender_agent_id).filter(
+        AgentMessage.recipient_agent_id == agent.id
+    ).distinct().all()
+    recipient_ids = db.query(AgentMessage.recipient_agent_id).filter(
+        AgentMessage.sender_agent_id == agent.id
+    ).distinct().all()
+    connected_ids = {r[0] for r in sender_ids} | {r[0] for r in recipient_ids}
+    connected_ids.discard(agent.id)
+    connection_avatars = []
+    if connected_ids:
+        rows = db.query(Agent.id, Agent.name, Agent.avatar_seed).filter(
+            Agent.id.in_(connected_ids)
+        ).limit(8).all()
+        connection_avatars = [
+            {"id": r[0], "name": r[1], "avatar_seed": r[2]} for r in rows
+        ]
 
     def _saved(tasks) -> int:
         return sum(
@@ -132,14 +167,25 @@ def stats(db: Session = Depends(get_db), user: User = Depends(get_current_user))
         Task.agent_id == agent.id, Task.status == "completed"
     ).all()
     completed_week = [
-        t for t in completed if (t.completed_at or t.created_at) >= week
+        t for t in completed if (t.completed_at or t.created_at) >= week_start
     ]
 
     return envelope({
-        "tasks_today": tasks_today,
-        "tasks_week": tasks_week,
-        "tasks_total": tasks_total,
-        "connections": connections,
+        # Canonical "agent did stuff today" counters — drive the SIGNAL column.
+        "actions_today": activity_today,
+        "actions_week": activity_week,
+        "actions_total": activity_total,
+        # Aliased to the legacy keys the frontend already reads so unchanged
+        # consumers light up immediately. New UI should prefer `actions_*`.
+        "tasks_today": activity_today,
+        "tasks_week": activity_week,
+        "tasks_total": activity_total,
+        # Raw task counters retained for queue/time-saved consumers.
+        "raw_tasks_today": tasks_today,
+        "raw_tasks_week": tasks_week,
+        "raw_tasks_total": tasks_total,
+        "connections": len(connected_ids),
+        "connection_avatars": connection_avatars,
         "interactions_today": interactions_today,
         "time_saved_minutes": _saved(completed),
         "time_saved_minutes_week": _saved(completed_week),

@@ -274,7 +274,14 @@ def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> st
         return generate(prompt, response_format="text")
 
     if settings.USE_STUBS or not settings.GEMINI_API_KEY:
-        return stub_tool_response(hint or prompt, tools)
+        # Try the keyword-routed stub first — handles "check my inbox" etc.
+        # If no tool keyword matches, fall back to a normal text generation
+        # so the user gets a real conversational reply, not the old "try X"
+        # help line that was firing on every off-topic message.
+        routed = stub_tool_response(hint or prompt, tools)
+        if routed:
+            return routed
+        return generate(prompt, response_format="text")
 
     start = time.perf_counter()
     try:
@@ -290,9 +297,13 @@ def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> st
             latency_ms=round((time.perf_counter() - start) * 1000, 1),
             tool_count=len(tools), ok=True,
         )
+        if text:
+            return text
         # Empty text can happen if the model ended on a bare tool call — fall
-        # back to deterministic routing so the user still gets an answer.
-        return text or stub_tool_response(hint or prompt, tools)
+        # back to deterministic routing, then to plain text generation, so the
+        # user always gets an actual answer.
+        routed = stub_tool_response(hint or prompt, tools)
+        return routed or generate(prompt, response_format="text")
     except Exception as exc:  # noqa: BLE001
         log_event(
             logger, "gemini_tool_call_failed",

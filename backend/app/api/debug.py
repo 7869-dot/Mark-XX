@@ -77,6 +77,40 @@ def gmail_raw(
     return envelope({"count": len(emails), "emails": emails})
 
 
+@router.get("/gemini-ping")
+def gemini_ping(
+    x_debug_secret: str | None = Header(default=None, alias="X-Debug-Secret"),
+):
+    """End-to-end Gemini probe. Returns the live model output, the key status,
+    and the resolved stub flag — diagnoses "why is chat returning the stub
+    fallback?" in one call."""
+    _check_secret(x_debug_secret)
+    key_present = bool(settings.GEMINI_API_KEY)
+    out: dict = {
+        "use_stubs": bool(settings.USE_STUBS),
+        "gemini_key_present": key_present,
+        "gemini_key_tail": (settings.GEMINI_API_KEY or "")[-4:] if key_present else None,
+        "model": "gemini-1.5-flash",
+        "ok": False,
+        "response": None,
+        "error": None,
+    }
+    if not key_present:
+        out["error"] = "GEMINI_API_KEY not set"
+        return envelope(out)
+    try:
+        import google.generativeai as genai  # type: ignore
+
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        resp = model.generate_content("Say hello in one word.")
+        out["ok"] = True
+        out["response"] = getattr(resp, "text", "") or ""
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"{type(exc).__name__}: {exc}"
+    return envelope(out)
+
+
 @router.get("/schema")
 def schema_dump(
     x_debug_secret: str | None = Header(default=None, alias="X-Debug-Secret"),
