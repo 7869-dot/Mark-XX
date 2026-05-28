@@ -86,6 +86,23 @@
 
   --border:        var(--border-default);
   --border-active: var(--accent-blue);
+
+  /* === Glass / glow system (chat + agent cards) ===
+   * Frosted surfaces use --glass-bg behind a backdrop-filter:var(--glass-blur).
+   * Agent output carries a subtle electric-blue --glow-agent; human output stays
+   * flat warm-white. Mood temps drive the chat header's color-temperature dot. */
+  --glass-bg:        rgba(36, 36, 40, 0.55);   /* frosted dark — over --bg-base */
+  --glass-bg-strong: rgba(36, 36, 40, 0.78);
+  --glass-border:    rgba(232, 230, 225, 0.08);
+  --glass-blur:      blur(14px) saturate(140%);
+
+  --accent-electric:  #3B82F6;                 /* brighter blue for agent glow */
+  --glow-agent:        0 0 0 1px rgba(59,130,246,0.25), 0 4px 24px rgba(59,130,246,0.18);
+  --glow-agent-strong: 0 0 0 1px rgba(59,130,246,0.45), 0 6px 30px rgba(59,130,246,0.32);
+
+  --mood-warm:       #F59E0B;   /* positive  */
+  --mood-neutral:    #38BDF8;   /* neutral   */
+  --mood-reflective: #8B5CF6;   /* reflective */
 }
 
 * { box-sizing: border-box; }

@@ -12,8 +12,57 @@ import {
 import { api, type ChatMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Markdown } from "@/components/chat/Markdown";
+import { NeuralTypingIndicator } from "@/components/chat/NeuralTypingIndicator";
+import { useTokenReveal } from "@/hooks/useTokenReveal";
 
 type Row = ChatMessage & { error?: boolean };
+
+type Mood = "warm" | "neutral" | "reflective";
+
+/** Lightweight, client-side mood read from the agent's recent replies — a
+ * heuristic stand-in until a real memory-derived mood endpoint exists. Positive
+ * language → warm, reflective/longer-form → reflective, otherwise neutral. */
+function deriveMood(rows: Row[]): Mood {
+  const recentAgent = rows.filter((r) => r.role === "agent").slice(-4);
+  if (!recentAgent.length) return "neutral";
+  const text = recentAgent.map((r) => r.content).join(" ").toLowerCase();
+  const warm = /(great|excited|love|glad|nice|win|congrat|happy|awesome|thanks)/.test(text);
+  const reflective =
+    /(think|reflect|wonder|perhaps|consider|maybe|remember|realize)/.test(text) ||
+    text.length / recentAgent.length > 320;
+  if (warm) return "warm";
+  if (reflective) return "reflective";
+  return "neutral";
+}
+
+const MOOD_META: Record<Mood, { color: string; label: string }> = {
+  warm: { color: "var(--mood-warm)", label: "warm" },
+  neutral: { color: "var(--mood-neutral)", label: "neutral" },
+  reflective: { color: "var(--mood-reflective)", label: "reflective" },
+};
+
+function MoodDot({ mood }: { mood: Mood }) {
+  const meta = MOOD_META[mood];
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`Agent mood: ${meta.label}`}>
+      <motion.span
+        className="w-2 h-2 rounded-full"
+        style={{ background: meta.color, boxShadow: `0 0 8px ${meta.color}` }}
+        animate={{ opacity: [0.6, 1, 0.6], scale: [1, 1.15, 1] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <span
+        style={{
+          fontFamily: "var(--font-data)",
+          fontSize: 11,
+          color: "var(--text-muted)",
+        }}
+      >
+        {meta.label}
+      </span>
+    </span>
+  );
+}
 
 const MODELS = [
   { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash", short: "Flash" },
@@ -49,33 +98,32 @@ function bucketHistory(rows: Row[]): { id: string; title: string; first: Date }[
   return buckets.reverse().map(({ id, title, first }) => ({ id, title, first }));
 }
 
-function TypingDots() {
+/** Blinking cursor shown while an agent reply reveals token-by-token. */
+function StreamCursor() {
   return (
-    <div className="flex gap-1.5 px-1 py-2" aria-label="agent is typing">
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ background: "var(--accent-primary)" }}
-          animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-          transition={{
-            duration: 1,
-            repeat: Infinity,
-            delay: i * 0.15,
-            ease: "easeInOut",
-          }}
-        />
-      ))}
-    </div>
+    <motion.span
+      className="inline-block align-baseline ml-0.5"
+      style={{
+        width: 2,
+        height: "1em",
+        background: "var(--accent-electric)",
+        transform: "translateY(2px)",
+      }}
+      animate={{ opacity: [1, 0, 1] }}
+      transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+    />
   );
 }
 
-function Bubble({ row }: { row: Row }) {
+function Bubble({ row, streaming }: { row: Row; streaming?: string | null }) {
   const isUser = row.role === "user";
+  const isStreaming = streaming != null && !isUser && !row.error;
   const ts = new Date(row.created_at).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+  // Human posts: warm white, solid, no glow. Agent posts: frosted glass with a
+  // subtle electric-blue glow — the human/agent visual distinction from §10.
   const userStyle = {
     background: "var(--accent-primary)",
     color: "#FFFFFF",
@@ -83,12 +131,14 @@ function Bubble({ row }: { row: Row }) {
     fontFamily: "var(--font-body)",
   } as const;
   const agentStyle = {
-    background: "var(--bg-secondary)",
-    border: "1px solid var(--border)",
+    background: "var(--glass-bg)",
+    border: "1px solid var(--glass-border)",
+    backdropFilter: "var(--glass-blur)",
+    WebkitBackdropFilter: "var(--glass-blur)",
     borderRadius: "16px 16px 16px 4px",
     color: "var(--text-primary)",
+    boxShadow: "var(--glow-agent)",
     fontFamily: "var(--font-body)",
-    boxShadow: "var(--shadow-sm)",
   } as const;
   const errorStyle = {
     background: "var(--accent-danger-soft)",
@@ -99,9 +149,14 @@ function Bubble({ row }: { row: Row }) {
   } as const;
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+      // User messages spring in from the right; agent messages rise gently.
+      initial={isUser ? { opacity: 0, x: 24 } : { opacity: 0, y: 12 }}
+      animate={isUser ? { opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
+      transition={
+        isUser
+          ? { type: "spring", stiffness: 420, damping: 30 }
+          : { duration: 0.25, ease: "easeOut" }
+      }
       className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
     >
       <div
@@ -110,6 +165,11 @@ function Bubble({ row }: { row: Row }) {
       >
         {isUser ? (
           <div className="whitespace-pre-wrap">{row.content}</div>
+        ) : isStreaming ? (
+          <div className="whitespace-pre-wrap">
+            {streaming}
+            <StreamCursor />
+          </div>
         ) : (
           <Markdown source={row.content} />
         )}
@@ -141,6 +201,8 @@ export function ChatPage() {
   // Last user message kept around so the inline error banner's "Retry"
   // button can resend without making the user retype.
   const [lastSent, setLastSent] = useState<string | null>(null);
+
+  const reveal = useTokenReveal();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -203,7 +265,7 @@ export function ChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [rows, sending]);
+  }, [rows, sending, reveal.text]);
 
   const autoSize = () => {
     const ta = taRef.current;
@@ -245,6 +307,8 @@ export function ChatPage() {
           : r;
         return swapped.concat(res.reply);
       });
+      // Reveal the reply token-by-token (client-side; see useTokenReveal).
+      reveal.start(res.reply.id, res.reply.content);
       setLastSent(null);
     } catch {
       // No more synthetic "I couldn't reach the network" agent bubble — that
@@ -280,6 +344,7 @@ export function ChatPage() {
   };
 
   const history = useMemo(() => bucketHistory(rows), [rows]);
+  const mood = useMemo(() => deriveMood(rows), [rows]);
   const activeModel = MODELS.find((m) => m.id === model) || MODELS[0];
 
   return (
@@ -400,14 +465,22 @@ export function ChatPage() {
               >
                 {agent?.name || "Your Agent"}
               </div>
-              <div
-                style={{
-                  fontFamily: "var(--font-data)",
-                  fontSize: 11,
-                  color: sending ? "var(--accent-gold)" : "var(--accent-green)",
-                }}
-              >
-                {sending ? "Thinking…" : "Online · mirrors your voice"}
+              <div className="flex items-center gap-2">
+                <span
+                  style={{
+                    fontFamily: "var(--font-data)",
+                    fontSize: 11,
+                    color: sending ? "var(--accent-gold)" : "var(--accent-green)",
+                  }}
+                >
+                  {sending ? "Thinking…" : "Online · mirrors your voice"}
+                </span>
+                {!sending && rows.some((r) => r.role === "agent") && (
+                  <>
+                    <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>·</span>
+                    <MoodDot mood={mood} />
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -532,21 +605,27 @@ export function ChatPage() {
           )}
           <AnimatePresence initial={false}>
             {rows.map((row) => (
-              <Bubble key={row.id} row={row} />
+              <Bubble
+                key={row.id}
+                row={row}
+                streaming={reveal.activeId === row.id ? reveal.text : null}
+              />
             ))}
           </AnimatePresence>
           {sending && (
             <div className="flex items-start">
               <div
-                className="px-3"
+                className="px-3 py-1"
                 style={{
-                  background: "var(--bg-secondary)",
-                  border: "1px solid var(--border)",
+                  background: "var(--glass-bg)",
+                  border: "1px solid var(--glass-border)",
+                  backdropFilter: "var(--glass-blur)",
+                  WebkitBackdropFilter: "var(--glass-blur)",
                   borderRadius: "16px 16px 16px 4px",
-                  boxShadow: "var(--shadow-sm)",
+                  boxShadow: "var(--glow-agent)",
                 }}
               >
-                <TypingDots />
+                <NeuralTypingIndicator />
               </div>
             </div>
           )}
