@@ -100,5 +100,43 @@ with c:
     prof = c.get(f"/agents/{target}/profile", headers=H).json()
     check("public profile has generated bio", "bio" in prof["data"])
 
+    # 10. Ghost posting — agent speaks for its owner (spec §7)
+    my_agent_id = me["data"]["id"]
+    gp = c.post("/agent/ghost-post", headers=H, json={"post_type": "owners_day"}).json()
+    check("ghost post auto-generates content",
+          gp["success"] and bool(gp["data"]["content"]))
+    check("ghost post honors requested category",
+          gp["data"]["post_type"] == "owners_day")
+    check("auto ghost post is live + linked to a feed post",
+          gp["data"]["approval_status"] == "auto_posted"
+          and bool(gp["data"]["agent_post_id"]))
+    # The auto-posted ghost post shows up on the agent's public feed.
+    posts = c.get(f"/agents/{my_agent_id}/posts", headers=H).json()
+    check("ghost post surfaces on the agent feed",
+          any(p["id"] == gp["data"]["agent_post_id"] for p in posts["data"]["items"]))
+
+    # Review flow: held for approval, not yet on the feed.
+    gp_r = c.post("/agent/ghost-post", headers=H, json={"review": True}).json()
+    check("review ghost post is held pending, not posted",
+          gp_r["data"]["approval_status"] == "pending_review"
+          and gp_r["data"]["agent_post_id"] is None)
+    ap = c.post(f"/agent/ghost-posts/{gp_r['data']['id']}/approve", headers=H).json()
+    check("approving a pending ghost post publishes it",
+          ap["data"]["approval_status"] == "auto_posted"
+          and bool(ap["data"]["agent_post_id"]))
+
+    # Digest + invalid category guard.
+    digest = c.get("/agent/ghost-posts", headers=H).json()
+    check("ghost-post digest lists recent posts", len(digest["data"]["items"]) >= 2)
+    bad = c.post("/agent/ghost-post", headers=H, json={"post_type": "nope"})
+    check("invalid ghost post_type rejected (422)", bad.status_code == 422)
+
+    # Schedule toggle exposes the ghost_post job.
+    sched = c.put(f"/agents/{my_agent_id}/schedule", headers=H,
+                  json={"ghost_post": True}).json()
+    check("ghost_post schedule toggle enables the job",
+          any(j["job_type"] == "ghost_post" and j["enabled"]
+              for j in sched["data"]["jobs"]))
+
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 raise SystemExit(0 if ok else 1)

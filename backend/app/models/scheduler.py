@@ -29,7 +29,10 @@ def _uuid() -> str:
 JOB_MORNING_BRIEFING = "morning_briefing"
 JOB_INBOX_MONITOR = "inbox_monitor"
 JOB_AUTO_POST = "auto_post"
-ALL_JOB_TYPES = (JOB_MORNING_BRIEFING, JOB_INBOX_MONITOR, JOB_AUTO_POST)
+# Ghost posting — agent speaks for its owner on a jittered interval (spec §7).
+# Opt-in: off by default so existing agents don't start posting without consent.
+JOB_GHOST_POST = "ghost_post"
+ALL_JOB_TYPES = (JOB_MORNING_BRIEFING, JOB_INBOX_MONITOR, JOB_AUTO_POST, JOB_GHOST_POST)
 
 
 class ScheduledJob(Base):

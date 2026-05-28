@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.core.logging import get_logger, log_event
-from app.models import Agent, AgentAlert, AgentPost, ScheduledJob
+from app.models import Agent, AgentAlert, AgentPost, GhostPost, ScheduledJob
 from app.models.agent import AgentMemory, AgentMemoryType
 from app.services import calendar_service, gmail_service
 from app.services.gemini import generate_for_agent
@@ -45,6 +45,12 @@ logger = get_logger("axolot.proactive")
 JOB_MORNING_BRIEFING = "morning_briefing"
 JOB_INBOX_MONITOR = "inbox_monitor"
 JOB_AUTO_POST = "auto_post"
+JOB_GHOST_POST = "ghost_post"
+
+# Minimum hours between an agent's ghost posts. The sweep fires every 4-6h
+# (jittered), but this is the hard floor that keeps an agent from posting twice
+# in quick succession if a run is delayed/coalesced — "natural, not spammy".
+GHOST_MIN_GAP_HOURS = 4
 
 # Heuristics — kept here, not config, because they're product decisions.
 VIP_MIN_THREADS = 5             # contacts you've gotten >=5 messages from are "VIP"
@@ -420,9 +426,63 @@ def auto_post_sweep():
     _run("auto_post_sweep", _do)
 
 
+# ── Ghost posting ────────────────────────────────────────────────────────────
+def ghost_post_sweep():
+    """Every 4-6h (jittered) — for every agent that opted into ghost posting,
+    generate one post in the owner's voice grounded in their memory, rotating
+    through the four categories. Enforces a per-agent minimum gap so a delayed or
+    coalesced run can't double-post.
+
+    Same resilience contract as the other sweeps: per-agent try/except, error
+    stamped onto the scheduled_jobs row, Gemini transients degrade to a notice.
+    """
+    from app.services.ghost_post_engine import generate_ghost_post
+
+    def _do():
+        db = SessionLocal()
+        try:
+            try:
+                agents = enabled_agents_for(db, JOB_GHOST_POST)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"[ghost_post_sweep] enabled_agents lookup failed: {exc}",
+                    exc_info=True,
+                )
+                return
+            gap_cutoff = datetime.utcnow() - timedelta(hours=GHOST_MIN_GAP_HOURS)
+            for agent in agents:
+                try:
+                    if not agent.user:
+                        continue
+                    last = (
+                        db.query(GhostPost.generated_at)
+                        .filter(GhostPost.agent_id == agent.id)
+                        .order_by(GhostPost.generated_at.desc())
+                        .first()
+                    )
+                    if last and last[0] and last[0] > gap_cutoff:
+                        continue  # posted too recently — let it breathe
+                    ghost = generate_ghost_post(db, agent)
+                    if ghost:
+                        mark_ran(db, agent.id, JOB_GHOST_POST)
+                        log_event(
+                            logger, "ghost_post_posted",
+                            agent_id=agent.id, post_type=ghost.post_type,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    _handle_agent_failure(
+                        db, agent, JOB_GHOST_POST, "ghost_post_sweep", exc,
+                    )
+        finally:
+            db.close()
+
+    _run("ghost_post_sweep", _do)
+
+
 def register_proactive_jobs(scheduler) -> None:
-    """Wire the three proactive sweeps into APScheduler. Idempotent — every
-    job is added with replace_existing so restart is safe."""
+    """Wire the proactive sweeps into APScheduler. Idempotent — every job is
+    added with replace_existing so restart is safe."""
     scheduler.add_job(
         morning_briefing_post, "cron", hour=8, minute=0,
         id="morning_briefing_post", replace_existing=True,
@@ -434,4 +494,10 @@ def register_proactive_jobs(scheduler) -> None:
     scheduler.add_job(
         auto_post_sweep, "cron", hour=9, minute=0,
         id="auto_post_sweep", replace_existing=True,
+    )
+    # Ghost posting — base 5h interval with ±1h jitter (=> 4-6h) so agents don't
+    # all post at the same synchronized instant.
+    scheduler.add_job(
+        ghost_post_sweep, "interval", hours=5, jitter=3600,
+        id="ghost_post_sweep", replace_existing=True,
     )

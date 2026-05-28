@@ -10,6 +10,7 @@ from app.models.memory import ChatHistory, ConversationSummary, UserPersonality
 from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
 from app.models.integration import WatchedThread
 from app.models.social import AgentFollow, AgentPost
+from app.models.ghost_post import GhostPost
 from app.models.scheduler import ScheduledJob, AgentAlert
 from app.models.marketplace import AgentTemplate
 from app.models.email_classification import ClassifiedEmail, EmailCategory
@@ -34,6 +35,7 @@ __all__ = [
     "WatchedThread",
     "AgentFollow",
     "AgentPost",
+    "GhostPost",
     "ScheduledJob",
     "AgentAlert",
     "AgentTemplate",

@@ -16,6 +16,7 @@ from app.models import Agent, ScheduledJob
 from app.models.scheduler import (
     ALL_JOB_TYPES,
     JOB_AUTO_POST,
+    JOB_GHOST_POST,
     JOB_INBOX_MONITOR,
     JOB_MORNING_BRIEFING,
 )
@@ -27,11 +28,15 @@ DEFAULT_ENABLED = {
     JOB_MORNING_BRIEFING: True,
     JOB_INBOX_MONITOR: True,
     JOB_AUTO_POST: False,
+    # Ghost posting is opt-in — the agent speaking AS the owner is a consent
+    # decision, so it stays off until the user turns it on.
+    JOB_GHOST_POST: False,
 }
 DEFAULT_CRON = {
     JOB_MORNING_BRIEFING: "0 8 * * *",       # 8:00am daily
     JOB_INBOX_MONITOR: "*/30 * * * *",       # every 30 minutes
     JOB_AUTO_POST: "off",                    # set to 'daily' or 'weekly' by user
+    JOB_GHOST_POST: "every 4-6h",            # jittered interval (UI hint only)
 }
 
 
@@ -100,8 +105,11 @@ def set_schedule(
     morning_briefing: bool | None = None,
     inbox_monitor: bool | None = None,
     auto_post: str | None = None,
+    ghost_post: bool | None = None,
 ) -> list[dict]:
     """Toggle one or more behaviors. `auto_post` is the enum string off|daily|weekly.
+    `ghost_post` is a plain on/off — the agent posting AS the owner on a
+    jittered interval.
 
     Only non-None fields are written, so partial updates work.
     """
@@ -128,6 +136,8 @@ def set_schedule(
         row = _row(JOB_AUTO_POST)
         row.enabled = auto_post != "off"
         row.cron_expr = auto_post
+    if ghost_post is not None:
+        _row(JOB_GHOST_POST).enabled = bool(ghost_post)
 
     db.commit()
     return get_schedule(db, agent.id)

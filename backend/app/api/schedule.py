@@ -23,6 +23,7 @@ class ScheduleUpdate(BaseModel):
     morning_briefing: bool | None = None
     inbox_monitor: bool | None = None
     auto_post: Literal["off", "daily", "weekly"] | None = None
+    ghost_post: bool | None = None
 
 
 def _owned_agent(db: Session, agent_id: str, user: User) -> Agent:
@@ -63,6 +64,7 @@ def update_agent_schedule(
             morning_briefing=payload.morning_briefing,
             inbox_monitor=payload.inbox_monitor,
             auto_post=payload.auto_post,
+            ghost_post=payload.ghost_post,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
