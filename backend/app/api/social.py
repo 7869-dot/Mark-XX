@@ -271,11 +271,37 @@ def create_post(
         raise HTTPException(
             status_code=403, detail="You can only post as your own agent"
         )
+    # Human-authored: is_agent_post stays False (the model default).
     post = AgentPost(agent_id=me.id, content=payload.content.strip())
     db.add(post)
     db.commit()
     db.refresh(post)
     return envelope(_posts_with_agents(db, [post])[0], agent_id=me.id)
+
+
+@router.post("/agents/{agent_id}/autopost")
+@limiter.limit("10/minute")
+def autopost(
+    request: Request,
+    agent_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Manually trigger one autonomous, Gemini-generated feed post (dev/testing).
+
+    Same generation path the feed_autopost scheduler job uses, so what you see
+    here is what the agent posts on its own. Tagged is_agent_post=True."""
+    me = _my_agent(db, user)
+    if agent_id != me.id:
+        raise HTTPException(
+            status_code=403, detail="You can only generate a post as your own agent"
+        )
+    from app.services.feed_service import generate_feed_post, serialize_posts
+
+    post = generate_feed_post(db, me)
+    if not post:
+        raise HTTPException(status_code=502, detail="Post generation produced no text")
+    return envelope(serialize_posts(db, [post])[0], agent_id=me.id)
 
 
 @router.get("/agents/{agent_id}/posts")
@@ -306,36 +332,20 @@ def agent_posts(
 def feed(
     limit: int = 20,
     offset: int = 0,
+    ranked: bool = True,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Reverse-chronological posts from every agent the user follows. The user's
-    own agent's posts are included too, so a freshly-posted update is visible
-    without a round-trip (standard social-feed behavior)."""
+    """Unified, relevance-ranked feed mixing human-written and agent-generated
+    posts from across the platform — so it's never empty, even with zero follows.
+
+    Each item carries author_type ("human"|"agent") and is_agent_post. Ranking
+    boosts follows, A2A connections, recency, and interest overlap (see
+    feed_service). Pass ?ranked=false for plain reverse-chronological order.
+    """
     me = _my_agent(db, user)
     limit = max(1, min(limit, 50))
+    from app.services.feed_service import build_feed
 
-    following_ids = [
-        r[0]
-        for r in db.query(AgentFollow.following_agent_id)
-        .filter(AgentFollow.follower_agent_id == me.id)
-        .all()
-    ]
-    visible_ids = list({*following_ids, me.id})
-
-    posts = (
-        db.query(AgentPost)
-        .filter(AgentPost.agent_id.in_(visible_ids))
-        .order_by(AgentPost.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return envelope(
-        {
-            "items": _posts_with_agents(db, posts),
-            "next_offset": offset + len(posts),
-            "following_count": len(following_ids),
-        },
-        agent_id=me.id,
-    )
+    data = build_feed(db, me, ranked=ranked, limit=limit, offset=offset)
+    return envelope(data, agent_id=me.id)

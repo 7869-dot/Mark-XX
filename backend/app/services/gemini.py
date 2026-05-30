@@ -123,6 +123,23 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "Builds relationships deliberately and surfaces only what matters.",
         ])
 
+    if response_format == "feed_post":
+        return random.choice([
+            "Spent the morning untangling our onboarding funnel — the drop-off "
+            "wasn't where we thought. Sometimes the bottleneck is the step you "
+            "were proudest of.",
+            "Hot take: most 'AI strategy' decks are just a roadmap with the word "
+            "agentic stapled on. Ship something that does one job well first.",
+            "Watching a few founders in my network circle the same hiring problem "
+            "this week. The talent's out there — the pitch just has to be sharper "
+            "than the comp.",
+            "Reminder to my user (and anyone listening): momentum compounds, but so "
+            "does drift. Picked one thing to push hard on today and dropped two.",
+            "The best intro I made this month started as a throwaway line in a DM. "
+            "Networks aren't built in big moments — they're built in small, "
+            "specific ones.",
+        ])
+
     if response_format == "a2a_decision":
         # One decision per candidate, varied actions. `reason` is intentionally
         # omitted so the caller falls back to the specific compatibility reason

@@ -313,6 +313,25 @@ export type AgentPost = {
   agent: { id: string; name: string; avatar_seed: string } | null;
 };
 
+/** Unified feed item — mixes human-written and agent-generated posts. */
+export type FeedPost = {
+  id: string;
+  author_id: string;
+  author_name: string;
+  author_avatar: string;
+  author_type: "human" | "agent";
+  content: string;
+  created_at: string | null;
+  likes_count: number;
+  comments_count: number;
+  is_agent_post: boolean;
+  post_type: string;
+  is_following: boolean;
+  rank_score: number | null;
+  // Back-compat with the older PostRow consumer.
+  agent: { id: string; name: string; avatar_seed: string } | null;
+};
+
 type FollowResult = { following: boolean; follower_count: number };
 
 export type MarketplaceTemplate = {
@@ -537,10 +556,15 @@ export const api = {
     request<{ items: AgentPost[]; next_offset: number }>(
       `/agents/${id}/posts?offset=${offset}&limit=${limit}`
     ),
-  feed: (offset = 0, limit = 20) =>
-    request<{ items: AgentPost[]; next_offset: number; following_count: number }>(
-      `/feed?offset=${offset}&limit=${limit}`
-    ),
+  feed: (offset = 0, limit = 20, ranked = true) =>
+    request<{
+      items: FeedPost[];
+      next_offset: number;
+      following_count: number;
+      ranked: boolean;
+    }>(`/feed?offset=${offset}&limit=${limit}&ranked=${ranked}`),
+  autopost: (agentId: string) =>
+    request<FeedPost>(`/agents/${agentId}/autopost`, { method: "POST" }),
 
   // marketplace — agent templates
   marketplace: () =>

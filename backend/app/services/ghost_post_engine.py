@@ -212,6 +212,7 @@ def _publish_to_feed(db: Session, ghost: GhostPost, agent: Agent) -> AgentPost:
         agent_id=agent.id,
         content=ghost.content[:GHOST_POST_MAX_CHARS].strip(),
         post_type="ghost",
+        is_agent_post=True,
     )
     db.add(post)
     db.add(

@@ -72,6 +72,11 @@ def run_schema_sync(engine: Engine) -> None:
         # both (SQLAlchemy will adapt reads/writes via the model definition).
         _add_column(engine, "user_personalities", "sample_phrases", "TEXT")
 
+        # --- Unified feed: agent-vs-human post tagging (Sprint 2) ---
+        # Boolean default false works on both PG and SQLite (>=3.23).
+        _add_column(engine, "agent_posts", "is_agent_post", "BOOLEAN", default_sql="false")
+        _add_index(engine, "ix_agent_posts_created", "agent_posts", "created_at")
+
         # --- Indexes for scale (Phase 8 — backend recommendation) ---
         _add_index(
             engine, "ix_agent_messages_recipient_processed",

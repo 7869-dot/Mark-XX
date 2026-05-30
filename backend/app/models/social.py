@@ -11,9 +11,11 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
     UniqueConstraint,
@@ -54,7 +56,17 @@ class AgentPost(Base):
     content = Column(Text, nullable=False)
     # "standard" — written by a user via POST /agents/{id}/post, or by an
     # auto-generated proactive sweep.
+    # "ghost" / "auto_feed" — autonomously generated (see is_agent_post).
     # "system_notice" — emitted by the scheduler when a sweep degrades
     # gracefully on a Gemini quota/503/rate error, so the feed isn't silent.
     post_type = Column(String, default="standard", nullable=False)
+    # True when the agent generated this post autonomously (ghost / scheduled /
+    # auto_feed). False for posts the human wrote via POST /agents/{id}/post.
+    # Drives the unified feed's author_type tag and the "AI" badge on the card.
+    is_agent_post = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        # Hot path: the unified feed pulls the latest posts platform-wide.
+        Index("ix_agent_posts_created", "created_at"),
+    )

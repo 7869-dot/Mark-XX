@@ -120,6 +120,9 @@ def _post(
         agent_id=agent.id,
         content=content[:POST_MAX_CHARS].strip(),
         post_type=post_type,
+        # Proactive sweeps are the agent speaking autonomously — tag them so the
+        # unified feed badges them and ranking can reason about author type.
+        is_agent_post=True,
     )
     db.add(post)
     if record_memory:
