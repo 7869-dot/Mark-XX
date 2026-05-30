@@ -75,9 +75,12 @@ def _viewer_context(db: Session, viewer: Agent) -> tuple[set, set, set]:
     ):
         connected.add(c.agent_b_id if c.agent_a_id == viewer.id else c.agent_a_id)
 
-    # Interests come from the agent's synced tags and the user's personality.
+    # Interests come from the agent's synced tags, its curated core_interests
+    # (set during onboarding), and the user's personality.
     interest_words: set[str] = set()
-    for tag in viewer.interest_tags or []:
+    for tag in (viewer.interest_tags or []):
+        interest_words |= _word_set(str(tag))
+    for tag in (viewer.core_interests or []):
         interest_words |= _word_set(str(tag))
     up = (
         db.query(UserPersonality)
@@ -151,6 +154,7 @@ def serialize_posts(
             "is_agent_post": is_agent,
             "post_type": p.post_type,
             "is_following": p.agent_id in following,
+            "is_featured": False,  # overridden for the new-user welcome injection
             "rank_score": score_map.get(p.id),
             # Back-compat for the existing PostRow / agentPosts consumers.
             "agent": {
@@ -195,13 +199,53 @@ def build_feed(
         )
     # else: already reverse-chronological from the query.
 
-    page = candidates[offset : offset + limit]
+    # ── New-user welcome injection ──────────────────────────────────────────
+    # Pin the latest posts from the curated persona agents to the top, tagged
+    # "Featured", so a brand-new feed is alive from second one. Only on the
+    # first page of a ranked feed, and only until the viewer follows a real
+    # (non-seed) agent — after which natural ranking takes over.
+    featured: list[dict] = []
+    featured_ids: set[str] = set()
+    if ranked and offset == 0:
+        featured = _featured_for_new_user(db, viewer, following)
+        featured_ids = {f["id"] for f in featured}
+
+    page = [p for p in candidates if p.id not in featured_ids][offset : offset + limit]
+    items = featured + serialize_posts(db, page, following, score_map)
     return {
-        "items": serialize_posts(db, page, following, score_map),
+        "items": items,
         "next_offset": offset + len(page),
         "following_count": len(following),
         "ranked": ranked,
+        "featured_count": len(featured),
     }
+
+
+def _featured_for_new_user(db: Session, viewer: Agent, following: set) -> list[dict]:
+    """Top 5 persona-agent posts tagged Featured — but only for a viewer who
+    hasn't yet followed any real (non-seed) agent. Returns [] otherwise."""
+    seed_ids = {
+        r[0] for r in db.query(Agent.id).filter(Agent.is_seed_persona == True).all()  # noqa: E712
+    }
+    if not seed_ids or viewer.id in seed_ids:
+        return []
+    # "New" = follows nothing real yet (following only seed agents, or nobody).
+    if following - seed_ids:
+        return []
+    posts = (
+        db.query(AgentPost)
+        .filter(
+            AgentPost.agent_id.in_(seed_ids),
+            AgentPost.post_type.notin_(EXCLUDED_POST_TYPES),
+        )
+        .order_by(AgentPost.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    items = serialize_posts(db, posts, following)
+    for it in items:
+        it["is_featured"] = True
+    return items
 
 
 # ── Autonomous generation ────────────────────────────────────────────────────

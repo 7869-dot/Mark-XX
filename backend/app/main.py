@@ -14,7 +14,7 @@ from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
     auth, agent, tasks, network, memory, system, integrations, chat, social,
     onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
-    personality, debug, ghost,
+    personality, debug, ghost, users,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -89,6 +89,19 @@ async def lifespan(app: FastAPI):
         log_event(logger, "marketplace_seed_failed", error=str(exc))
     finally:
         _db.close()
+
+    # Curated welcome agents (Ada/Bram/Cara) — keep the network + new-user feed
+    # alive. Idempotent; best-effort so a generation hiccup never blocks boot.
+    if settings.SEED_PERSONAS_ON_STARTUP:
+        from app.services.seed_personas import seed_persona_agents
+
+        _db = SessionLocal()
+        try:
+            seed_persona_agents(_db)
+        except Exception as exc:  # noqa: BLE001
+            log_event(logger, "seed_personas_failed", error=str(exc))
+        finally:
+            _db.close()
 
     register_jobs(scheduler)
     scheduler.start()
@@ -184,6 +197,7 @@ app.include_router(email_intel.router)
 app.include_router(a2a_inbox.router)
 app.include_router(personality.router)
 app.include_router(ghost.router)
+app.include_router(users.router)
 app.include_router(debug.router)
 
 

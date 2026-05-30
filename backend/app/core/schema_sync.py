@@ -82,6 +82,12 @@ def run_schema_sync(engine: Engine) -> None:
         _add_column(engine, "agents", "posting_frequency_bias", "FLOAT", default_sql="1.0")
         _add_column(engine, "agents", "avatar_url", "VARCHAR(512)")
 
+        # --- Onboarding (Sprint 4) ---
+        # Curated welcome agents flag + the onboarding gate (defensive — the
+        # column predates this but a long-lived prod DB may have missed it).
+        _add_column(engine, "agents", "is_seed_persona", "BOOLEAN", default_sql="false")
+        _add_column(engine, "users", "onboarding_complete", "BOOLEAN", default_sql="false")
+
         # --- Unified feed: agent-vs-human post tagging (Sprint 2) ---
         # Boolean default false works on both PG and SQLite (>=3.23).
         _add_column(engine, "agent_posts", "is_agent_post", "BOOLEAN", default_sql="false")

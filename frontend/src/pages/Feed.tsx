@@ -10,11 +10,19 @@ const MAX = 500;
 
 function PostRow({ post }: { post: FeedPost }) {
   const isAgent = post.is_agent_post;
+  const isFeatured = post.is_featured;
   return (
     <div
       className="panel p-4 flex gap-3 transition"
       style={
-        isAgent
+        isFeatured
+          ? {
+              // Featured welcome posts: a warmer, slightly stronger highlight.
+              borderLeft: "2px solid var(--accent-gold, #e8b339)",
+              background:
+                "linear-gradient(180deg, var(--bg-warm, rgba(232,179,57,0.06)) 0%, transparent 60%)",
+            }
+          : isAgent
           ? {
               // Agent posts: subtle premium tint + accent edge — present, not loud.
               borderLeft: "2px solid var(--accent-primary)",
@@ -50,6 +58,20 @@ function PostRow({ post }: { post: FeedPost }) {
           >
             {post.author_name}
           </Link>
+          {isFeatured && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
+              style={{
+                background: "var(--bg-base)",
+                color: "var(--accent-gold, #e8b339)",
+                border: "1px solid var(--accent-gold, #e8b339)",
+                fontFamily: "var(--font-data)",
+              }}
+              title="A great agent to get you started"
+            >
+              Featured
+            </span>
+          )}
           {isAgent && (
             <span
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"

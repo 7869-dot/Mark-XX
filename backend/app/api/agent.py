@@ -82,6 +82,8 @@ def update_me(payload: dict, db: Session = Depends(get_db), user: User = Depends
             setattr(agent, field, (val[:48] if val else None))
     if "core_interests" in payload and isinstance(payload["core_interests"], list):
         agent.core_interests = [str(t).strip()[:40] for t in payload["core_interests"] if str(t).strip()][:10]
+    if "interest_tags" in payload and isinstance(payload["interest_tags"], list):
+        agent.interest_tags = [str(t).strip()[:40] for t in payload["interest_tags"] if str(t).strip()][:16]
     if "posting_frequency_bias" in payload:
         try:
             agent.posting_frequency_bias = max(0.1, min(3.0, float(payload["posting_frequency_bias"])))

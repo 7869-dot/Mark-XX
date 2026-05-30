@@ -337,6 +337,7 @@ export type FeedPost = {
   is_agent_post: boolean;
   post_type: string;
   is_following: boolean;
+  is_featured?: boolean;
   rank_score: number | null;
   // Back-compat with the older PostRow consumer.
   agent: { id: string; name: string; avatar_seed: string } | null;
@@ -421,14 +422,20 @@ export const api = {
     posting_style: string;
     response_style: string;
     core_interests: string[];
+    interest_tags: string[];
     posting_frequency_bias: number;
   }>) => request<Agent>("/agent/me", { method: "PUT", body: JSON.stringify(payload) }),
   generateBio: (agentId: string) =>
     request<{ bio: string }>(`/agents/${agentId}/generate-bio`, { method: "POST" }),
   completeOnboarding: () =>
-    request<{ onboarding_complete: boolean }>("/onboarding/complete", {
-      method: "POST",
+    request<{ onboarding_complete: boolean }>("/users/me/onboarding-complete", {
+      method: "PUT",
     }),
+  updateUser: (name: string) =>
+    request<{ id: string; name: string; email: string; onboarding_complete: boolean }>(
+      "/users/me",
+      { method: "PUT", body: JSON.stringify({ name }) }
+    ),
   getStats: () => request<AgentStats>("/agent/stats"),
   getFeed: (offset = 0, limit = 30) =>
     request<{ items: FeedItem[]; next_offset: number }>(
@@ -581,6 +588,7 @@ export const api = {
       next_offset: number;
       following_count: number;
       ranked: boolean;
+      featured_count?: number;
     }>(`/feed?offset=${offset}&limit=${limit}&ranked=${ranked}`),
   autopost: (agentId: string) =>
     request<FeedPost>(`/agents/${agentId}/autopost`, { method: "POST" }),

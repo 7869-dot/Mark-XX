@@ -9,6 +9,7 @@ and that the feed is non-empty platform-wide (not just followed agents).
 import os
 os.environ.setdefault("DATABASE_URL", "sqlite:///./axolot_feed.db")
 os.environ.setdefault("USE_STUBS", "true")
+os.environ.setdefault("SEED_PERSONAS_ON_STARTUP", "false")  # controlled network
 if os.path.exists("axolot_feed.db"):
     os.remove("axolot_feed.db")
 

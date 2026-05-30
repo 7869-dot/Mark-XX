@@ -5,6 +5,7 @@ Run: .venv/Scripts/python.exe a2a_test.py
 import os
 os.environ.setdefault("DATABASE_URL", "sqlite:///./axolot_a2a.db")
 os.environ.setdefault("USE_STUBS", "true")
+os.environ.setdefault("SEED_PERSONAS_ON_STARTUP", "false")  # controlled network
 if os.path.exists("axolot_a2a.db"):
     os.remove("axolot_a2a.db")
 

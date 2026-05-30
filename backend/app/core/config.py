@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "https://axolot.vercel.app"
     AXOLOT_BACKEND_URL: str = "http://localhost:8000"
     SCHEDULER_TIMEZONE: str = "UTC"
+    # Seed the curated welcome agents (Ada/Bram/Cara) at startup. On in prod/dev;
+    # tests that need a controlled network set this false.
+    SEED_PERSONAS_ON_STARTUP: bool = True
 
     # Force-stub override. Defaults to FALSE so a production deploy that
     # provisions GEMINI_API_KEY / Google creds goes live automatically —

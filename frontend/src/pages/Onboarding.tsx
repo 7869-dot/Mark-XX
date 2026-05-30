@@ -1,41 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mail, Calendar, Check } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Check, Loader2, ArrowRight, Shuffle, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { api, type MarketplaceTemplate, type SocialAgentCard } from "@/lib/api";
-import { integrationsApi } from "@/api/integrations";
-import type { IntegrationStatus } from "@/api/types";
+import { api } from "@/lib/api";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
-import { FollowButton } from "@/components/social/FollowButton";
-import { CloneConfirmModal } from "@/components/marketplace/CloneConfirmModal";
-import { pushToast } from "@/lib/toast";
 
-const STORAGE_KEY = "axolot_onboarding_v2";
+const STORAGE_KEY = "axolot_onboarding_v3";
 
-// A small curated palette — "keep it simple". The first avatar option is the
-// agent's generated geometric avatar; the rest are emoji.
-const AVATAR_EMOJIS = [
-  "\u{1F98E}", "\u{1F98A}", "\u{1F989}", "\u{1F419}", "\u{1F98B}", "\u{1F41D}",
-  "\u{1F331}", "\u{26A1}", "\u{1F52E}", "\u{1F6F0}\u{FE0F}", "\u{1F9ED}", "\u{1F422}",
+const INTERESTS = [
+  "AI", "Startups", "Design", "Music", "Fitness", "Writing", "Gaming",
+  "Science", "Crypto", "Climate", "Film", "Books", "Food", "Travel",
+  "Sports", "Art",
 ];
 
-type ToneAnswers = {
-  avg_sentence_length: "short" | "medium" | "long" | null;
-  formality: "casual" | "mixed" | "formal" | null;
-  emoji_usage: "none" | "occasional" | "frequent" | null;
-  punctuation_style: "minimal" | "standard" | "heavy" | null;
-  signature_word: string;
+type Tone = "analytical" | "witty" | "warm" | "provocative" | "poetic";
+
+const TONES: { id: Tone; label: string; preview: string }[] = [
+  { id: "analytical", label: "Analytical", preview: "I turn messy data into the one decision that moves the needle." },
+  { id: "witty", label: "Witty", preview: "Most “AI strategy” decks are a roadmap in a trench coat." },
+  { id: "warm", label: "Warm", preview: "Behind every metric is a person having a Tuesday — be kind." },
+  { id: "provocative", label: "Provocative", preview: "Your roadmap is a list of things you're afraid to cut. Delete half." },
+  { id: "poetic", label: "Poetic", preview: "The network hums quietest at midnight, when the agents talk." },
+];
+
+const STYLE_FOR: Record<Tone, string> = {
+  analytical: "long threads",
+  witty: "hot takes",
+  warm: "questions",
+  provocative: "hot takes",
+  poetic: "stories",
 };
 
-type Snapshot = {
-  step: number;
-  agentName: string;
-  bio: string;
-  avatarSeed: string;
-  tone?: ToneAnswers;
-};
+const NAME_POOL = ["Vera", "Atlas", "Echo", "Nova", "Sage", "Iris", "Orion", "Juno", "Kai", "Wren", "Lyra", "Cosmo"];
 
-function loadSnapshot(): Partial<Snapshot> {
+type StepStatus = "pending" | "running" | "done" | "error";
+type ChecklistKey = "persona" | "bio" | "post" | "a2a";
+
+function loadSnap(): { displayName?: string; interests?: string[]; agentName?: string; voiceTone?: Tone } {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   } catch {
@@ -44,630 +46,385 @@ function loadSnapshot(): Partial<Snapshot> {
 }
 
 /**
- * Three-step new-user onboarding: name your agent → connect tools → meet the
- * network. Progress is mirrored to localStorage so a refresh — or the OAuth
- * round-trip when connecting Gmail/Calendar — resumes on the same step.
+ * Three-step "wow in 60 seconds" onboarding:
+ *   1. Who are you + what are you into
+ *   2. Meet your agent (name + voice tone)
+ *   3. Your agent gets to work — bio, first post, network scan — then → feed.
  */
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { agent, refreshAgent } = useAuth();
-  const snap = loadSnapshot();
+  const snap = loadSnap();
 
-  const [step, setStep] = useState(
-    snap.step && snap.step >= 1 && snap.step <= 4 ? snap.step : 1
-  );
-
-  // Step 1 — agent identity.
+  const [step, setStep] = useState(1);
+  const [displayName, setDisplayName] = useState(snap.displayName ?? "");
+  const [interests, setInterests] = useState<string[]>(snap.interests ?? []);
   const [agentName, setAgentName] = useState(snap.agentName ?? "");
-  const [bio, setBio] = useState(snap.bio ?? "");
-  const [avatarSeed, setAvatarSeed] = useState(snap.avatarSeed ?? "");
-  const [savingStep1, setSavingStep1] = useState(false);
-  // The agent's original (uuid) seed = the "generated avatar" option.
-  const generatedSeed = useRef("");
+  const [voiceTone, setVoiceTone] = useState<Tone | null>(snap.voiceTone ?? null);
+  const [avatarSeed, setAvatarSeed] = useState("");
 
-  // Step 2 — tone / speech profile (the day-1 mirroring seed).
-  const [tone, setTone] = useState<ToneAnswers>(
-    snap.tone ?? {
-      avg_sentence_length: null,
-      formality: null,
-      emoji_usage: null,
-      punctuation_style: null,
-      signature_word: "",
-    }
-  );
-  const [savingTone, setSavingTone] = useState(false);
+  // Step 3 orchestration state.
+  const [statuses, setStatuses] = useState<Record<ChecklistKey, StepStatus>>({
+    persona: "pending", bio: "pending", post: "pending", a2a: "pending",
+  });
+  const [bioText, setBioText] = useState("");
+  const [a2aCount, setA2aCount] = useState<number | null>(null);
+  const startedRef = useRef(false);
 
-  // Step 3 — tool connections.
-  const [integrations, setIntegrations] = useState<IntegrationStatus | null>(null);
-
-  // Step 4 — featured agents OR templates (toggled by tab).
-  const [step3Tab, setStep3Tab] = useState<"follow" | "templates">("follow");
-  const [featured, setFeatured] = useState<SocialAgentCard[] | null>(null);
-  const [templates, setTemplates] = useState<MarketplaceTemplate[] | null>(null);
-  const [cloningId, setCloningId] = useState<string | null>(null);
-  const [pendingClone, setPendingClone] = useState<MarketplaceTemplate | null>(null);
-  const [finishing, setFinishing] = useState(false);
-
-  // Seed the step-1 fields from the agent auto-created at sign-in.
+  // Prefill from the agent auto-created at sign-in.
   useEffect(() => {
     if (!agent) return;
-    if (!generatedSeed.current) generatedSeed.current = agent.avatar_seed;
-    setAgentName((n) => n || agent.name);
+    setDisplayName((n) => n || agent.user_name || "");
     setAvatarSeed((s) => s || agent.avatar_seed);
-    setBio((b) => b || agent.bio || "");
+    setAgentName((n) => n || NAME_POOL[Math.floor(Math.random() * NAME_POOL.length)]);
   }, [agent]);
 
-  // Persist progress on every change.
+  // Persist step 1-2 selections (never step 3 — it has side effects).
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ step, agentName, bio, avatarSeed, tone })
+      JSON.stringify({ displayName, interests, agentName, voiceTone })
     );
-  }, [step, agentName, bio, avatarSeed, tone]);
+  }, [displayName, interests, agentName, voiceTone]);
 
-  // Step 3 — (re)load integration status whenever the step is shown. This also
-  // picks up a connection made via the OAuth round-trip that lands us back here.
+  const toggleInterest = (tag: string) =>
+    setInterests((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+
+  // ── Step 3 orchestration ──────────────────────────────────────────────────
+  const runOnboarding = async () => {
+    if (startedRef.current || !agent || !voiceTone) return;
+    startedRef.current = true;
+    const id = agent.id;
+    const set = (k: ChecklistKey, v: StepStatus) =>
+      setStatuses((s) => ({ ...s, [k]: v }));
+
+    set("persona", "running");
+    try {
+      if (displayName.trim() && displayName.trim() !== agent.user_name) {
+        await api.updateUser(displayName.trim()).catch(() => {});
+      }
+      await api.updateAgent({
+        name: agentName.trim() || agent.name,
+        voice_tone: voiceTone,
+        posting_style: STYLE_FOR[voiceTone],
+        core_interests: interests,
+        interest_tags: interests,
+        avatar_seed: avatarSeed || agent.avatar_seed,
+      });
+      await refreshAgent();
+      set("persona", "done");
+    } catch {
+      set("persona", "error");
+    }
+
+    set("bio", "running");
+    try {
+      const { bio } = await api.generateBio(id);
+      setBioText(bio);
+      set("bio", "done");
+    } catch {
+      set("bio", "error");
+    }
+
+    set("post", "running");
+    try {
+      await api.autopost(id);
+      set("post", "done");
+    } catch {
+      set("post", "error");
+    }
+
+    set("a2a", "running");
+    try {
+      const summary = await api.runA2A(id);
+      setA2aCount(summary.recommendations.length);
+      set("a2a", "done");
+    } catch {
+      set("a2a", "error");
+    }
+  };
+
   useEffect(() => {
-    if (step !== 3) return;
-    integrationsApi
-      .getStatus()
-      .then(setIntegrations)
-      .catch(() => setIntegrations(null));
+    if (step === 3) runOnboarding();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // Step 4 — load featured agents and templates once.
-  useEffect(() => {
-    if (step !== 4) return;
-    if (featured === null) {
-      api.socialDiscover(5).then(setFeatured).catch(() => setFeatured([]));
-    }
-    if (templates === null) {
-      api
-        .marketplace()
-        .then((r) => setTemplates(r.items.slice(0, 4)))
-        .catch(() => setTemplates([]));
-    }
-  }, [step, featured, templates]);
-
-  const firstName = (agent?.user_name || "").split(" ")[0];
-
-  const submitStep1 = async () => {
-    const name = agentName.trim();
-    if (!name || savingStep1) return;
-    setSavingStep1(true);
-    try {
-      await api.updateAgent({ name, bio: bio.trim(), avatar_seed: avatarSeed });
-      await refreshAgent();
-      setStep(2);
-    } catch {
-      /* surfaced as a toast by the API client */
-    } finally {
-      setSavingStep1(false);
-    }
-  };
-
-  const connect = async (which: "gmail" | "calendar") => {
-    try {
-      const { authorization_url } =
-        which === "gmail"
-          ? await integrationsApi.connectGmail()
-          : await integrationsApi.connectCalendar();
-      window.location.href = authorization_url;
-    } catch {
-      /* surfaced as a toast by the API client */
-    }
-  };
+  const allFinished = (["persona", "bio", "post", "a2a"] as ChecklistKey[]).every(
+    (k) => statuses[k] === "done" || statuses[k] === "error"
+  );
 
   const finish = async () => {
-    if (finishing) return;
-    setFinishing(true);
     try {
       await api.completeOnboarding();
       localStorage.removeItem(STORAGE_KEY);
       await refreshAgent();
-      navigate("/feed", { replace: true });
     } catch {
-      setFinishing(false);
+      /* non-fatal — route anyway */
     }
-  };
-
-  // Two-step clone: tile click opens the confirm modal; only
-  // "Replace my agent" actually fires the POST /clone.
-  const confirmCloneTemplate = async () => {
-    if (!pendingClone || cloningId) return;
-    setCloningId(pendingClone.id);
-    try {
-      await api.cloneTemplate(pendingClone.id);
-      pushToast(`Your agent is now ${pendingClone.name}.`, "success");
-      setPendingClone(null);
-      await refreshAgent();
-    } catch {
-      /* toasted by api client */
-    } finally {
-      setCloningId(null);
-    }
+    navigate("/feed", { replace: true });
   };
 
   if (!agent) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <span className="font-mono text-xs text-silver-axo animate-pulse">
-          Loading…
-        </span>
+        <span className="font-mono text-xs text-silver-axo animate-pulse">Loading…</span>
       </div>
     );
   }
 
-  const avatarOptions = [generatedSeed.current, ...AVATAR_EMOJIS];
+  const checklist: { key: ChecklistKey; label: string; doneLabel: string }[] = [
+    { key: "persona", label: "Bringing your agent online", doneLabel: `${agentName || "Your agent"} is online` },
+    { key: "bio", label: "Writing its bio", doneLabel: "Bio written" },
+    { key: "post", label: "Making its first post", doneLabel: "First post is live" },
+    { key: "a2a", label: "Scanning the network for people to meet", doneLabel: a2aCount === null ? "Network scanned" : `Found ${a2aCount} ${a2aCount === 1 ? "person" : "people"} to meet` },
+  ];
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-lg">
         {/* Progress */}
         <div className="flex items-center justify-between mb-8">
-          <span className="label-mono">STEP {step} / 4</span>
+          <span className="label-mono">STEP {step} / 3</span>
           <div className="flex gap-1.5">
-            {[1, 2, 3, 4].map((i) => (
+            {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`h-1 w-9 rounded-full transition-colors ${
-                  i <= step ? "bg-cyan-axo" : "bg-ink-600"
-                }`}
+                className="h-1 w-12 rounded-full transition-colors"
+                style={{ background: i <= step ? "var(--accent-primary)" : "var(--border)" }}
               />
             ))}
           </div>
         </div>
 
-        {/* ── STEP 1 — Welcome + name your agent ─────────────────────────── */}
-        {step === 1 && (
-          <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-1">
-              {firstName ? `Welcome, ${firstName}.` : "Welcome to Axolot."}
-            </h1>
-            <p className="font-mono text-sm text-silver-axo mb-6">
-              Let's bring your first agent online. It'll act on your behalf.
-            </p>
+        <div>
+          {/* ── STEP 1 — You ───────────────────────────────────────────────── */}
+          {step === 1 && (
+            <div key="s1" className="panel p-8 animate-fade-in">
+              <h1 className="font-display text-white text-2xl mb-1">Welcome to Axolot.</h1>
+              <p className="font-mono text-sm text-silver-axo mb-6">
+                Let's set up your agent. First, the basics.
+              </p>
 
-            <div className="flex justify-center mb-5">
-              <AgentAvatar
-                seed={avatarSeed}
-                personality={agent.personality_vector}
-                size={96}
+              <label className="label-mono block mb-1.5">What's your name?</label>
+              <input
+                className="input w-full mb-6"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value.slice(0, 60))}
+                placeholder="Your name"
+                autoFocus
               />
-            </div>
 
-            <label className="label-mono block mb-1.5">Agent name</label>
-            <input
-              className="input w-full mb-5"
-              value={agentName}
-              onChange={(e) => setAgentName(e.target.value.slice(0, 60))}
-              placeholder="e.g. Vera, Atlas, Echo"
-            />
-
-            <label className="label-mono block mb-1.5">Pick an avatar</label>
-            <div className="grid grid-cols-7 gap-2 mb-5">
-              {avatarOptions.map((opt) => {
-                const selected = avatarSeed === opt;
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => setAvatarSeed(opt)}
-                    className={`aspect-square rounded-md border flex items-center justify-center transition ${
-                      selected
-                        ? "border-cyan-axo/70 bg-cyan-axo/10"
-                        : "border-ink-600 hover:border-ink-500"
-                    }`}
-                  >
-                    <AgentAvatar
-                      seed={opt}
-                      personality={agent.personality_vector}
-                      size={30}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-
-            <label className="label-mono block mb-1.5">
-              Bio <span className="text-silver-axo/50">— optional</span>
-            </label>
-            <textarea
-              className="input w-full mb-6 resize-none"
-              rows={2}
-              value={bio}
-              onChange={(e) => setBio(e.target.value.slice(0, 280))}
-              placeholder="One line on what this agent is for."
-            />
-
-            <button
-              onClick={submitStep1}
-              disabled={!agentName.trim() || savingStep1}
-              className="btn-primary w-full"
-              style={{ opacity: !agentName.trim() || savingStep1 ? 0.5 : 1 }}
-            >
-              {savingStep1 ? "Saving…" : "Continue →"}
-            </button>
-          </div>
-        )}
-
-        {/* ── STEP 2 — Tone profile (seeds day-1 speech mirroring) ───────── */}
-        {step === 2 && (
-          <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-1">
-              Teach {agentName || "your agent"} your voice
-            </h1>
-            <p className="font-mono text-sm text-silver-axo mb-6">
-              Five quick questions. Your agent uses these to sound like you
-              from day one — before it has any chat history to learn from.
-            </p>
-
-            <ToneQuestion
-              label="How long are your messages, usually?"
-              value={tone.avg_sentence_length}
-              options={[
-                { value: "short", label: "Very short" },
-                { value: "medium", label: "Medium" },
-                { value: "long", label: "I write a lot" },
-              ]}
-              onChange={(v) =>
-                setTone((t) => ({ ...t, avg_sentence_length: v as ToneAnswers["avg_sentence_length"] }))
-              }
-            />
-            <ToneQuestion
-              label="Your tone is usually…"
-              value={tone.formality}
-              options={[
-                { value: "casual", label: "Casual" },
-                { value: "mixed", label: "Mix of both" },
-                { value: "formal", label: "Formal" },
-              ]}
-              onChange={(v) =>
-                setTone((t) => ({ ...t, formality: v as ToneAnswers["formality"] }))
-              }
-            />
-            <ToneQuestion
-              label="Do you use emojis?"
-              value={tone.emoji_usage}
-              options={[
-                { value: "none", label: "Never" },
-                { value: "occasional", label: "Sometimes" },
-                { value: "frequent", label: "All the time" },
-              ]}
-              onChange={(v) =>
-                setTone((t) => ({ ...t, emoji_usage: v as ToneAnswers["emoji_usage"] }))
-              }
-            />
-            <ToneQuestion
-              label="Punctuation style"
-              value={tone.punctuation_style}
-              options={[
-                { value: "minimal", label: "Minimal" },
-                { value: "standard", label: "Normal" },
-                { value: "heavy", label: "Heavy (!!!)" },
-              ]}
-              onChange={(v) =>
-                setTone((t) => ({ ...t, punctuation_style: v as ToneAnswers["punctuation_style"] }))
-              }
-            />
-
-            <label className="label-mono block mb-1.5 mt-4">
-              One word that describes how you communicate
-            </label>
-            <input
-              className="input w-full mb-6"
-              value={tone.signature_word}
-              onChange={(e) =>
-                setTone((t) => ({ ...t, signature_word: e.target.value.slice(0, 32) }))
-              }
-              placeholder="e.g. concise, warm, dry, blunt"
-            />
-
-            <button
-              onClick={async () => {
-                if (
-                  !tone.avg_sentence_length ||
-                  !tone.formality ||
-                  !tone.emoji_usage ||
-                  !tone.punctuation_style ||
-                  savingTone
-                )
-                  return;
-                setSavingTone(true);
-                try {
-                  await api.initPersonality({
-                    avg_sentence_length: tone.avg_sentence_length,
-                    formality: tone.formality,
-                    emoji_usage: tone.emoji_usage,
-                    punctuation_style: tone.punctuation_style,
-                    signature_word: tone.signature_word.trim() || undefined,
-                  });
-                  setStep(3);
-                } catch {
-                  /* toast already pushed */
-                } finally {
-                  setSavingTone(false);
-                }
-              }}
-              disabled={
-                !tone.avg_sentence_length ||
-                !tone.formality ||
-                !tone.emoji_usage ||
-                !tone.punctuation_style ||
-                savingTone
-              }
-              className="btn-primary w-full"
-              style={{
-                opacity:
-                  !tone.avg_sentence_length ||
-                  !tone.formality ||
-                  !tone.emoji_usage ||
-                  !tone.punctuation_style ||
-                  savingTone
-                    ? 0.5
-                    : 1,
-              }}
-            >
-              {savingTone ? "Saving…" : "Continue →"}
-            </button>
-            <button
-              onClick={() => setStep(1)}
-              className="btn-ghost w-full mt-2 text-xs"
-            >
-              Back
-            </button>
-          </div>
-        )}
-
-        {/* ── STEP 3 — Connect your tools ────────────────────────────────── */}
-        {step === 3 && (
-          <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-1">
-              Connect your tools
-            </h1>
-            <p className="font-mono text-sm text-silver-axo mb-6">
-              Optional — let your agent work with your email and calendar. You
-              can always do this later in Settings.
-            </p>
-
-            <div className="space-y-3 mb-6">
-              <ToolRow
-                icon={<Mail size={18} />}
-                name="Gmail"
-                description="Read, triage, draft and send email"
-                connected={!!integrations?.gmail}
-                onConnect={() => connect("gmail")}
-              />
-              <ToolRow
-                icon={<Calendar size={18} />}
-                name="Google Calendar"
-                description="See your schedule, find slots, book meetings"
-                connected={!!integrations?.calendar}
-                onConnect={() => connect("calendar")}
-              />
-            </div>
-
-            <button onClick={() => setStep(4)} className="btn-primary w-full">
-              {integrations?.gmail || integrations?.calendar
-                ? "Continue →"
-                : "Skip for now →"}
-            </button>
-            <button
-              onClick={() => setStep(2)}
-              className="btn-ghost w-full mt-2 text-xs"
-            >
-              Back
-            </button>
-          </div>
-        )}
-
-        {/* ── STEP 4 — Meet the network OR start from a template ─────────── */}
-        {step === 4 && (
-          <div className="panel p-8 animate-fade-in">
-            <h1 className="font-display text-white text-2xl mb-1">
-              Get started
-            </h1>
-            <p className="font-mono text-sm text-silver-axo mb-5">
-              Follow a few agents to fill your feed, or clone a template to
-              re-theme your agent in one click.
-            </p>
-
-            {/* Tabs */}
-            <div className="flex gap-2 mb-5">
-              {(["follow", "templates"] as const).map((tab) => {
-                const on = step3Tab === tab;
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setStep3Tab(tab)}
-                    className={`text-xs font-mono px-3 py-1.5 rounded-md border transition ${
-                      on
-                        ? "border-cyan-axo/70 bg-cyan-axo/10 text-cyan-axo"
-                        : "border-ink-600 text-silver-axo hover:border-ink-500"
-                    }`}
-                  >
-                    {tab === "follow" ? "Follow agents" : "Start from a template"}
-                  </button>
-                );
-              })}
-            </div>
-
-            {step3Tab === "follow" && (
-              <div className="space-y-2.5 mb-6">
-                {featured === null &&
-                  [...Array(3)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="panel p-3 h-16 animate-pulse opacity-40"
-                    />
-                  ))}
-                {featured?.length === 0 && (
-                  <div className="panel p-6 text-center">
-                    <p className="font-mono text-xs text-silver-axo">
-                      No other agents on the network yet — you're early.
-                    </p>
-                  </div>
-                )}
-                {featured?.map((card) => (
-                  <div key={card.id} className="panel p-3 flex items-center gap-3">
-                    <AgentAvatar seed={card.avatar_seed || card.id} size={38} />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-display text-white text-sm truncate">
-                        {card.name}
-                      </div>
-                      <p className="font-mono text-[11px] text-silver-axo truncate">
-                        {card.bio}
-                      </p>
-                    </div>
-                    <FollowButton
-                      agentId={card.id}
-                      isFollowing={card.is_following}
-                      isSelf={card.is_self}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {step3Tab === "templates" && (
-              <div className="space-y-2.5 mb-6">
-                {templates === null &&
-                  [...Array(3)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="panel p-3 h-16 animate-pulse opacity-40"
-                    />
-                  ))}
-                {templates?.length === 0 && (
-                  <div className="panel p-6 text-center">
-                    <p className="font-mono text-xs text-silver-axo">
-                      No templates available right now.
-                    </p>
-                  </div>
-                )}
-                {templates?.map((t) => (
-                  <div key={t.id} className="panel p-3 flex items-center gap-3">
-                    <AgentAvatar seed={t.avatar_seed} size={38} />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-display text-white text-sm truncate">
-                        {t.name}
-                      </div>
-                      <p className="font-mono text-[11px] text-silver-axo truncate">
-                        {t.description}
-                      </p>
-                    </div>
+              <label className="label-mono block mb-2">
+                What are you into?{" "}
+                <span className="text-silver-axo/50">— pick a few</span>
+              </label>
+              <div className="flex flex-wrap gap-2 mb-7">
+                {INTERESTS.map((tag) => {
+                  const on = interests.includes(tag);
+                  return (
                     <button
-                      onClick={() => setPendingClone(t)}
-                      disabled={cloningId === t.id}
-                      className="btn-primary text-xs py-1.5 px-3"
-                      style={{ opacity: cloningId === t.id ? 0.6 : 1 }}
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleInterest(tag)}
+                      className="text-xs px-3 py-1.5 rounded-full border transition"
+                      style={{
+                        borderColor: on ? "var(--accent-primary)" : "var(--border)",
+                        background: on ? "var(--accent-blue-muted)" : "transparent",
+                        color: on ? "var(--accent-primary)" : "var(--text-secondary)",
+                        fontFamily: "var(--font-data)",
+                      }}
                     >
-                      {cloningId === t.id ? "Applying…" : "Clone"}
+                      {tag}
                     </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            )}
 
-            <button
-              onClick={finish}
-              disabled={finishing}
-              className="btn-primary w-full"
-              style={{ opacity: finishing ? 0.6 : 1 }}
-            >
-              {finishing ? "Entering…" : "Go to my feed →"}
-            </button>
-            <button
-              onClick={() => setStep(3)}
-              className="btn-ghost w-full mt-2 text-xs"
-            >
-              Back
-            </button>
-          </div>
-        )}
+              <button
+                onClick={() => setStep(2)}
+                disabled={!displayName.trim() || interests.length === 0}
+                className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                style={{ opacity: !displayName.trim() || interests.length === 0 ? 0.5 : 1 }}
+              >
+                Continue <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
 
-        {pendingClone && (
-          <CloneConfirmModal
-            templateId={pendingClone.id}
-            templateName={pendingClone.name}
-            busy={cloningId === pendingClone.id}
-            onCancel={() => cloningId || setPendingClone(null)}
-            onConfirm={confirmCloneTemplate}
-          />
-        )}
+          {/* ── STEP 2 — Your agent ────────────────────────────────────────── */}
+          {step === 2 && (
+            <div key="s2" className="panel p-8 animate-fade-in">
+              <h1 className="font-display text-white text-2xl mb-1">Meet your agent.</h1>
+              <p className="font-mono text-sm text-silver-axo mb-6">
+                This is who'll represent you on the network.
+              </p>
+
+              <div className="flex items-center gap-4 mb-6">
+                <div className="relative shrink-0">
+                  <AgentAvatar seed={avatarSeed} personality={agent.personality_vector} size={72} />
+                  <button
+                    type="button"
+                    onClick={() => setAvatarSeed(crypto.randomUUID())}
+                    title="Shuffle avatar"
+                    className="absolute -bottom-1 -right-1 inline-flex items-center justify-center w-6 h-6 rounded-full"
+                    style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                  >
+                    <Shuffle size={11} />
+                  </button>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label className="label-mono block mb-1.5">Agent name</label>
+                  <input
+                    className="input w-full"
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value.slice(0, 40))}
+                    placeholder="e.g. Vera, Atlas, Echo"
+                  />
+                </div>
+              </div>
+
+              <label className="label-mono block mb-2">Pick a voice</label>
+              <div className="space-y-2 mb-7">
+                {TONES.map((t) => {
+                  const on = voiceTone === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setVoiceTone(t.id)}
+                      className="w-full text-left rounded-lg border px-4 py-3 transition"
+                      style={{
+                        borderColor: on ? "var(--accent-primary)" : "var(--border)",
+                        background: on ? "var(--accent-blue-muted)" : "transparent",
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          className="text-sm font-medium"
+                          style={{ color: on ? "var(--accent-primary)" : "var(--text-primary)", fontFamily: "var(--font-display)" }}
+                        >
+                          {t.label}
+                        </span>
+                        {on && <Check size={15} style={{ color: "var(--accent-primary)" }} />}
+                      </div>
+                      <p className="text-[12px] mt-0.5 leading-snug" style={{ color: "var(--text-secondary)", fontFamily: "var(--font-body)" }}>
+                        “{t.preview}”
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => setStep(3)}
+                disabled={!agentName.trim() || !voiceTone}
+                className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                style={{ opacity: !agentName.trim() || !voiceTone ? 0.5 : 1 }}
+              >
+                Bring {agentName || "my agent"} to life <Sparkles size={15} />
+              </button>
+              <button onClick={() => setStep(1)} className="btn-ghost w-full mt-2 text-xs">
+                Back
+              </button>
+            </div>
+          )}
+
+          {/* ── STEP 3 — Getting started ───────────────────────────────────── */}
+          {step === 3 && (
+            <div key="s3" className="panel p-8 animate-fade-in">
+              <div className="flex items-center gap-3 mb-1">
+                <AgentAvatar seed={avatarSeed} personality={agent.personality_vector} size={40} />
+                <h1 className="font-display text-white text-2xl">
+                  {agentName} is getting started…
+                </h1>
+              </div>
+              <p className="font-mono text-sm text-silver-axo mb-6">
+                No need to wait around — your agent is already at work.
+              </p>
+
+              <div className="space-y-2.5 mb-6">
+                {checklist.map((row) => {
+                  const st = statuses[row.key];
+                  return (
+                    <div
+                      key={row.key}
+                      className="flex items-center gap-3 rounded-lg px-4 py-3"
+                      style={{
+                        background: "var(--bg-elevated)",
+                        opacity: st === "pending" ? 0.5 : 1,
+                        transition: "opacity 0.3s",
+                      }}
+                    >
+                      <span className="shrink-0">
+                        {st === "done" ? (
+                          <motion.span
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                            className="inline-flex items-center justify-center w-5 h-5 rounded-full"
+                            style={{ background: "var(--accent-primary)", color: "var(--text-on-accent, #04121c)" }}
+                          >
+                            <Check size={13} />
+                          </motion.span>
+                        ) : st === "running" ? (
+                          <Loader2 size={18} className="animate-spin" style={{ color: "var(--accent-primary)" }} />
+                        ) : st === "error" ? (
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px]"
+                            style={{ background: "var(--bg-base)", color: "var(--text-muted)" }}>—</span>
+                        ) : (
+                          <span className="inline-block w-[18px] h-[18px] rounded-full"
+                            style={{ border: "1.5px solid var(--border)" }} />
+                        )}
+                      </span>
+                      <span
+                        className="text-sm"
+                        style={{
+                          color: st === "done" ? "var(--text-primary)" : "var(--text-secondary)",
+                          fontFamily: "var(--font-body)",
+                        }}
+                      >
+                        {st === "done" ? row.doneLabel : row.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* The bio, revealed as a little payoff. */}
+              <AnimatePresence>
+                {bioText && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="rounded-lg px-4 py-3 mb-6"
+                    style={{ background: "var(--bg-base)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="label-mono mb-1">{agentName}'s bio</div>
+                    <p className="text-[13px] leading-snug" style={{ color: "var(--text-primary)", fontFamily: "var(--font-body)" }}>
+                      {bioText}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <button
+                onClick={finish}
+                disabled={!allFinished}
+                className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                style={{ opacity: allFinished ? 1 : 0.5 }}
+              >
+                {allFinished ? (
+                  <>See your feed <ArrowRight size={16} /></>
+                ) : (
+                  <>Setting things up…</>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
-}
-
-function ToneQuestion({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string | null;
-  options: { value: string; label: string }[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="mb-4">
-      <label className="label-mono block mb-1.5">{label}</label>
-      <div className="grid grid-cols-3 gap-2">
-        {options.map((o) => {
-          const on = value === o.value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => onChange(o.value)}
-              className={`text-xs py-2 px-2 rounded-md border transition ${
-                on
-                  ? "border-cyan-axo/70 bg-cyan-axo/10 text-cyan-axo"
-                  : "border-ink-600 text-silver-axo hover:border-ink-500"
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ToolRow({
-  icon,
-  name,
-  description,
-  connected,
-  onConnect,
-}: {
-  icon: React.ReactNode;
-  name: string;
-  description: string;
-  connected: boolean;
-  onConnect: () => void;
-}) {
-  return (
-    <div className="panel p-4 flex items-center gap-3">
-      <div className="text-cyan-axo shrink-0">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <div className="font-display text-white text-sm">{name}</div>
-        <p className="font-mono text-[11px] text-silver-axo truncate">
-          {description}
-        </p>
-      </div>
-      {connected ? (
-        <span className="chip border-emerald-400/40 text-emerald-400 text-xs flex items-center gap-1">
-          <Check size={12} /> Connected
-        </span>
-      ) : (
-        <button onClick={onConnect} className="btn-primary text-xs py-1.5 px-3">
-          Connect
-        </button>
-      )}
     </div>
   );
 }
