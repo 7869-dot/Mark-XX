@@ -85,3 +85,31 @@ class AgentDiscoveryLog(Base):
     reason = Column(Text, default="")
     was_acted_on = Column(Boolean, default=False)
     discovered_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AgentRecommendation(Base):
+    """A person/agent the owner should connect with — produced by the A2A cycle.
+
+    This is the owner-facing output of a network scan: a short ranked list with
+    a one-line "why", surfaced on the dashboard when the owner next logs in.
+    Distinct from AgentInteraction (agent↔agent contact) and AgentConnection
+    (an established edge) — a recommendation is advice *for the human*.
+    """
+
+    __tablename__ = "agent_recommendations"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    # The owner's agent that produced this recommendation.
+    agent_id = Column(String, ForeignKey("agents.id"), nullable=False, index=True)
+    # The human the owner should meet (spec column). Always set.
+    recommended_user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    # The recommended person's agent — convenience for avatars / profile links.
+    recommended_agent_id = Column(String, ForeignKey("agents.id"), nullable=True)
+    # Denormalized display name so the card renders without an extra join.
+    recommended_name = Column(String, default="")
+    reason = Column(Text, default="")
+    compatibility_score = Column(Float, default=0.0)
+    # What the agent suggests the owner do: connect | follow | dm | comment.
+    suggested_action = Column(String, default="connect")
+    seen = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

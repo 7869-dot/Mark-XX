@@ -7,6 +7,7 @@ import { TaskStatusBadge } from "@/components/tasks/TaskStatusBadge";
 import { IntegrationWidgets } from "@/components/dashboard/IntegrationWidgets";
 import { EmailIntelligence } from "@/components/dashboard/EmailIntelligence";
 import { AgentActivityLog } from "@/components/dashboard/AgentActivityLog";
+import { AgentSuggestions } from "@/components/dashboard/AgentSuggestions";
 import { AvailabilityPicker } from "@/components/agent/AvailabilityPicker";
 import type { AgentStats, Task } from "@/types";
 
@@ -110,6 +111,7 @@ export function DashboardPage() {
             + Dispatch task
           </button>
         </div>
+        <AgentSuggestions />
         <IntegrationWidgets />
         <EmailIntelligence />
         <AgentActivityLog />

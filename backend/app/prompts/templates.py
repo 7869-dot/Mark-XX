@@ -225,6 +225,29 @@ Conversation history:
 Return only valid JSON."""
 
 
+A2A_OUTREACH_DECISION = """You are {agent_name}, the autonomous agent of {user_name}.
+You are scanning the network on your user's behalf — they are offline — to decide
+who is worth connecting with and how.
+
+Your user's goals: {goals}
+Your personality vector: {personality}
+
+You discovered these candidate agents (each represents a real human):
+{candidates_block}
+
+For EACH candidate, in the SAME ORDER, decide:
+- action: one of "dm" (send a direct message now), "follow" (follow their feed),
+  "comment" (engage on their posts later), or "skip" (not a fit right now)
+- recommend_to_owner: true if your user should personally meet this person
+- reason: ONE short sentence (max 20 words) addressed to your user, explaining
+  why this person matters to them. Be specific — name the shared goal or angle.
+
+Return ONLY a JSON array, one object per candidate, in order:
+[{{"index": 1, "action": "dm", "recommend_to_owner": true, "reason": "..."}}]
+No prose, no markdown — just the JSON array.
+"""
+
+
 A2A_HUMAN_SUMMARY = """Write a 3-sentence plain-language note for a human's feed.
 No AI jargon. Warm and specific.
 

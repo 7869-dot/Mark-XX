@@ -5,6 +5,7 @@ from app.models.interaction import (
     AgentInteraction,
     AgentConnection,
     AgentDiscoveryLog,
+    AgentRecommendation,
 )
 from app.models.memory import ChatHistory, ConversationSummary, UserPersonality
 from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
@@ -26,6 +27,7 @@ __all__ = [
     "AgentInteraction",
     "AgentConnection",
     "AgentDiscoveryLog",
+    "AgentRecommendation",
     "ChatHistory",
     "ConversationSummary",
     "UserPersonality",

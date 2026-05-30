@@ -21,6 +21,20 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # ── LLM gateway ──────────────────────────────────────────────────────────
+    # The provider/model are config, never hardcoded in business logic, so the
+    # Phase-3 move to self-hosted GPUs (RunPod/vLLM) or the proprietary Axolot
+    # model is a deploy-var change, not a code rewrite. See services/llm_gateway.
+    #   LLM_PROVIDER: "gemini" (default) | "local" (any OpenAI-compatible server)
+    #   LLM_MODEL:    model id passed to whichever provider is active
+    LLM_PROVIDER: str = "gemini"
+    LLM_MODEL: str = "gemini-3.1-flash-lite"
+    # OpenAI-compatible endpoint for the "local" provider (vLLM/TGI on RunPod,
+    # or the eventual fine-tuned Axolot model behind the same wire format).
+    LLM_BASE_URL: str = ""          # e.g. https://<pod>.runpod.net/v1
+    LLM_API_KEY: str = ""           # bearer for the local/self-hosted endpoint
+    LLM_TIMEOUT_SECONDS: float = 30.0
+
     # Canonical secret. Render sets SECRET_KEY; legacy code reads JWT_SECRET.
     SECRET_KEY: str = ""
     JWT_SECRET: str = "dev-jwt-secret-change-me"

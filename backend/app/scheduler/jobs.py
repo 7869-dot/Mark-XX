@@ -123,69 +123,21 @@ def goal_check():
 
 
 def network_scan():
-    """Every 6h per agent — discover top-5 candidates, auto-introduce to #1 (score>60).
+    """Every 6h per agent — run a full A2A cycle while the owner is offline.
 
-    Rules: exclude already-connected, exclude discovered in last 7d, exclude same
-    user. Max 1 auto-introduction per agent per day. Log all 5 to discovery log.
+    Each cycle discovers candidates, lets Gemini decide who to reach out to and
+    how (dm/follow/comment), autonomously acts on the best fits (gated by the
+    daily initiation limit), and stores a ranked list of owner-facing
+    recommendations. See services.a2a_recommendations.run_a2a_cycle.
     """
 
     def _do():
-        from app.services.compatibility import compute_compatibility
-        from app.services.a2a_engine import (
-            already_connected,
-            recently_discovered,
-            log_discovery,
-            run_interaction,
-        )
+        from app.services.a2a_recommendations import run_cycle_for_all
 
         db = SessionLocal()
         try:
-            day_ago = datetime.utcnow() - timedelta(days=1)
-            for a in db.query(Agent).all():
-                if not a.user:
-                    continue
-
-                # Max 1 auto-introduction per agent per day.
-                if db.query(AgentInteraction).filter(
-                    AgentInteraction.initiator_agent_id == a.id,
-                    AgentInteraction.created_at >= day_ago,
-                ).count() >= 1:
-                    continue
-
-                candidates = []
-                for other in db.query(Agent).filter(Agent.id != a.id).all():
-                    if other.user_id == a.user_id:
-                        continue
-                    if already_connected(db, a.id, other.id):
-                        continue
-                    if recently_discovered(db, a.id, other.id, days=7):
-                        continue
-                    compat = compute_compatibility(a, other)
-                    candidates.append((other, compat))
-
-                if not candidates:
-                    continue
-                candidates.sort(key=lambda x: x[1]["score"], reverse=True)
-                top5 = candidates[:5]
-
-                # Log all 5 for future reference.
-                for other, compat in top5:
-                    log_discovery(
-                        db, a.id, other.id, compat["score"], compat["reason"],
-                        acted_on=False, commit=False,
-                    )
-                db.commit()
-
-                # Auto-introduce to #1 only if score > 60.
-                best, best_compat = top5[0]
-                if best_compat["score"] > 60:
-                    interaction, _ = run_interaction(db, a, best)
-                    add_memory(
-                        db, a, AgentMemoryType.interaction,
-                        f"Reached out to {best.name} — {best_compat['reason']} "
-                        f"(compat {best_compat['score']:.0f}).",
-                        importance=0.6,
-                    )
+            processed = run_cycle_for_all(db)
+            log_event(logger, "network_scan_done", agents=processed)
         finally:
             db.close()
 

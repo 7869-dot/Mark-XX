@@ -250,6 +250,40 @@ export type AgentMessageThread = {
 
 export type AgentAvailabilityValue = "always_on" | "business_hours" | "dnd";
 
+export type AgentRecommendation = {
+  id: string;
+  recommended_user_id: string;
+  recommended_agent_id: string | null;
+  recommended_name: string;
+  reason: string;
+  compatibility_score: number;
+  suggested_action: string;
+  seen: boolean;
+  created_at: string | null;
+};
+
+export type A2ACycleSummary = {
+  agent_id: string;
+  agent_name: string;
+  scanned: number;
+  decisions: {
+    agent_id: string;
+    name: string;
+    action: string;
+    recommend_to_owner: boolean;
+    compatibility_score: number;
+    reason: string;
+  }[];
+  reached_out: {
+    action: string;
+    agent_id: string;
+    name: string;
+    interaction_id?: string;
+    compatibility_score: number;
+  }[];
+  recommendations: AgentRecommendation[];
+};
+
 export type AgentActivityItem = {
   id: string;
   action_type: string;
@@ -437,6 +471,24 @@ export const api = {
       other_user_email: string | null;
     }>(`/agents/interactions/${id}/human-followup`, { method: "POST" }),
   networkStats: () => request<NetworkStats>("/network/stats"),
+
+  // A2A recommendations — "Your agent suggests"
+  recommendations: (agentId: string, includeSeen = false) =>
+    request<{ items: AgentRecommendation[] }>(
+      `/agents/${agentId}/recommendations?include_seen=${includeSeen}`
+    ),
+  markRecommendationSeen: (agentId: string, recId: string) =>
+    request<{ seen: boolean; id: string }>(
+      `/agents/${agentId}/recommendations/${recId}/seen`,
+      { method: "POST" }
+    ),
+  markAllRecommendationsSeen: (agentId: string) =>
+    request<{ marked_seen: number }>(
+      `/agents/${agentId}/recommendations/seen-all`,
+      { method: "POST" }
+    ),
+  runA2A: (agentId: string) =>
+    request<A2ACycleSummary>(`/agents/${agentId}/run-a2a`, { method: "POST" }),
 
   // memory
   memoryTimeline: () =>

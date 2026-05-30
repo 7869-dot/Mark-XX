@@ -22,6 +22,7 @@ from app.models import (
     AgentDiscoveryLog,
     UserPersonality,
 )
+from app.services import a2a_recommendations
 from app.models.interaction import InteractionType, InteractionStatus
 from app.schemas.interaction import InteractionCreate
 from app.prompts.templates import AGENT_BIO
@@ -345,6 +346,83 @@ def human_followup(interaction_id: str, db: Session = Depends(get_db), user: Use
         },
         me.id,
     )
+
+
+# ── Recommendations ("Your agent suggests") + manual A2A trigger ────────────
+def _require_owned_agent(db: Session, agent_id: str, user: User):
+    """Resolve an agent the caller owns, or an (error_response) tuple."""
+    a = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not a:
+        return None, fail("AGENT_NOT_FOUND", "Agent not found", 404)
+    if a.user_id != user.id:
+        return None, fail("FORBIDDEN", "Not your agent", 403)
+    return a, None
+
+
+@router.get("/agents/{agent_id}/recommendations")
+def get_recommendations(
+    agent_id: str,
+    include_seen: bool = False,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The owner-facing 'people you should meet' list produced by the A2A cycle."""
+    agent, error = _require_owned_agent(db, agent_id, user)
+    if error:
+        return error
+    items = a2a_recommendations.recommendations_for_agent(
+        db, agent.id, include_seen=include_seen, limit=min(max(limit, 1), 50)
+    )
+    return ok({"items": items}, agent.id)
+
+
+@router.post("/agents/{agent_id}/recommendations/{rec_id}/seen")
+def mark_recommendation_seen(
+    agent_id: str,
+    rec_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    agent, error = _require_owned_agent(db, agent_id, user)
+    if error:
+        return error
+    marked = a2a_recommendations.mark_recommendation_seen(db, agent.id, rec_id)
+    if not marked:
+        return fail("RECOMMENDATION_NOT_FOUND", "Recommendation not found", 404)
+    return ok({"seen": True, "id": rec_id}, agent.id)
+
+
+@router.post("/agents/{agent_id}/recommendations/seen-all")
+def mark_all_recommendations_seen(
+    agent_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    agent, error = _require_owned_agent(db, agent_id, user)
+    if error:
+        return error
+    n = a2a_recommendations.mark_all_seen(db, agent.id)
+    return ok({"marked_seen": n}, agent.id)
+
+
+@router.post("/agents/{agent_id}/run-a2a")
+@limiter.limit("6/minute")
+def run_a2a(
+    agent_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Trigger one full A2A cycle now (for dev / demo) and return what the agent
+    decided: who it scanned, who it reached out to, and who it recommends."""
+    agent, error = _require_owned_agent(db, agent_id, user)
+    if error:
+        return error
+    sync_agent_profile(db, agent)
+    summary = a2a_recommendations.run_a2a_cycle(db, agent)
+    cache.invalidate(f"discover_rich:{agent.id}:10")
+    return ok(summary, agent.id)
 
 
 # ── Public profile ─────────────────────────────────────────────────────────

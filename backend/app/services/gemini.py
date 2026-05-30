@@ -123,6 +123,18 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "Builds relationships deliberately and surfaces only what matters.",
         ])
 
+    if response_format == "a2a_decision":
+        # One decision per candidate, varied actions. `reason` is intentionally
+        # omitted so the caller falls back to the specific compatibility reason
+        # (which names the shared goal) in stub mode.
+        return json.dumps([
+            {"index": 1, "action": "dm", "recommend_to_owner": True},
+            {"index": 2, "action": "follow", "recommend_to_owner": True},
+            {"index": 3, "action": "comment", "recommend_to_owner": True},
+            {"index": 4, "action": "follow", "recommend_to_owner": False},
+            {"index": 5, "action": "skip", "recommend_to_owner": False},
+        ])
+
     if response_format == "goal_align":
         return json.dumps({
             "alignment_score": round(random.uniform(45, 88), 1),
@@ -224,11 +236,9 @@ def generate(prompt: str, response_format: str = "text") -> str:
     for attempt in range(1, MAX_RETRIES + 1):
         start = time.perf_counter()
         try:
-            import google.generativeai as genai  # type: ignore
+            from app.services import llm_gateway
 
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-3.1-flash-lite")
-            response = model.generate_content(prompt)
+            text = llm_gateway.complete(prompt, task_type=response_format)
             latency_ms = round((time.perf_counter() - start) * 1000, 1)
             log_event(
                 logger,
@@ -239,7 +249,7 @@ def generate(prompt: str, response_format: str = "text") -> str:
                 response_format=response_format,
                 ok=True,
             )
-            return response.text
+            return text
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             latency_ms = round((time.perf_counter() - start) * 1000, 1)
@@ -285,13 +295,9 @@ def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> st
 
     start = time.perf_counter()
     try:
-        import google.generativeai as genai  # type: ignore
+        from app.services import llm_gateway
 
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-3.1-flash-lite", tools=tools)
-        chat = model.start_chat(enable_automatic_function_calling=True)
-        response = chat.send_message(prompt)
-        text = (getattr(response, "text", "") or "").strip()
+        text = (llm_gateway.complete(prompt, task_type="text", tools=tools) or "").strip()
         log_event(
             logger, "gemini_tool_call",
             latency_ms=round((time.perf_counter() - start) * 1000, 1),
@@ -329,15 +335,9 @@ def generate_for_agent(db, agent, instruction: str, response_format: str = "text
 
 
 def ping() -> bool:
-    """Cheap liveness check for /health. True if stubbed or a 1-token call works."""
-    if settings.USE_STUBS or not settings.GEMINI_API_KEY:
-        return True
-    try:
-        import google.generativeai as genai  # type: ignore
+    """Cheap liveness check for /health. True if stubbed or the active provider
+    responds. Delegates to the gateway so /health reflects whatever backend is
+    configured (Gemini today, a RunPod pod tomorrow)."""
+    from app.services import llm_gateway
 
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-3.1-flash-lite")
-        model.generate_content("ping")
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    return llm_gateway.health()
