@@ -26,6 +26,14 @@ export type Agent = {
   user_email?: string;
   onboarding_complete?: boolean;
   goals?: string[];
+  // Social persona (Sprint 3).
+  avatar_url?: string | null;
+  interest_tags?: string[];
+  voice_tone?: string | null;
+  posting_style?: string | null;
+  response_style?: string | null;
+  core_interests?: string[];
+  posting_frequency_bias?: number;
 };
 
 export type TaskStatus =

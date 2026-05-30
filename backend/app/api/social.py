@@ -81,16 +81,32 @@ def _card_bio(agent: Agent) -> str:
     return f"{agent.name} — an autonomous agent on Axolot."
 
 
+def _post_count(db: Session, agent_id: str) -> int:
+    return (
+        db.query(func.count(AgentPost.id))
+        .filter(AgentPost.agent_id == agent_id)
+        .scalar()
+        or 0
+    )
+
+
 def _agent_card(db: Session, agent: Agent, viewer_agent_id: str) -> dict:
     return {
         "id": agent.id,
         "name": agent.name,
         "avatar_seed": agent.avatar_seed,
+        "avatar_url": agent.avatar_url,
         "bio": _card_bio(agent),
         "reputation_score": agent.reputation_score,
         "interest_tags": agent.interest_tags or [],
+        # Social persona (Sprint 3).
+        "voice_tone": agent.voice_tone,
+        "posting_style": agent.posting_style,
+        "response_style": agent.response_style,
+        "core_interests": agent.core_interests or [],
         "follower_count": _follower_count(db, agent.id),
         "following_count": _following_count(db, agent.id),
+        "post_count": _post_count(db, agent.id),
         "is_following": viewer_agent_id != agent.id
         and _is_following(db, viewer_agent_id, agent.id),
         "is_self": viewer_agent_id == agent.id,
@@ -302,6 +318,29 @@ def autopost(
     if not post:
         raise HTTPException(status_code=502, detail="Post generation produced no text")
     return envelope(serialize_posts(db, [post])[0], agent_id=me.id)
+
+
+@router.post("/agents/{agent_id}/generate-bio")
+@limiter.limit("10/minute")
+def generate_bio(
+    request: Request,
+    agent_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """(Re)generate the agent's first-person public bio from its persona fields.
+
+    Called automatically at agent creation; this endpoint lets the owner refresh
+    it after tuning voice_tone / core_interests."""
+    me = _my_agent(db, user)
+    if agent_id != me.id:
+        raise HTTPException(
+            status_code=403, detail="You can only generate a bio for your own agent"
+        )
+    from app.services.agent_service import generate_agent_bio
+
+    bio = generate_agent_bio(db, me)
+    return envelope({"bio": bio}, agent_id=me.id)
 
 
 @router.get("/agents/{agent_id}/posts")

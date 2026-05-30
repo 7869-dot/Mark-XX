@@ -106,6 +106,22 @@ class Agent(Base):
         default=AgentAvailability.always_on,
         nullable=True,
     )
+
+    # ── Social persona (Sprint 3) — makes each agent a distinct individual ──
+    # Short tone label: witty | analytical | warm | provocative | poetic | …
+    voice_tone = Column(String, nullable=True)
+    # How they post: "short takes" | "long threads" | "questions" | "hot takes" | "stories"
+    posting_style = Column(String, nullable=True)
+    # How they engage others: "Socratic" | "affirming" | "contrarian" | "collaborative"
+    response_style = Column(String, nullable=True)
+    # 5-10 curated persona topics. Distinct from interest_tags (synced from the
+    # user) — core_interests is the agent's stable, public identity.
+    core_interests = Column(JSON, default=list)
+    # 0.5 = posts less than average, 1.5 = posts more. Scales the autopost odds.
+    posting_frequency_bias = Column(Float, default=1.0)
+    # Optional hosted avatar; falls back to the deterministic SVG (avatar_seed).
+    avatar_url = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
 

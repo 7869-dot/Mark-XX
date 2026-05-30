@@ -97,6 +97,7 @@ def decide_outreach(
             user_name=agent.user.name if agent.user else "your user",
             goals=agent.goal_titles or [],
             personality=agent.personality_vector or {},
+            response_style=agent.response_style or "collaborative",
             candidates_block=_candidates_block(candidates),
         )
         raw = generate(prompt, response_format="a2a_decision")
@@ -237,6 +238,21 @@ def generate_recommendations(
     return [_rec_dict(r) for r in created]
 
 
+def _enrich_with_persona(db: Session, dicts: list[dict]) -> list[dict]:
+    """Add the recommended agent's voice_tone + a core interest so the
+    'Your agent suggests' card can preview who they are (Sprint 3)."""
+    ids = {d["recommended_agent_id"] for d in dicts if d.get("recommended_agent_id")}
+    if not ids:
+        return dicts
+    agents = {a.id: a for a in db.query(Agent).filter(Agent.id.in_(ids)).all()}
+    for d in dicts:
+        a = agents.get(d.get("recommended_agent_id"))
+        interests = (a.core_interests or a.interest_tags or []) if a else []
+        d["recommended_voice_tone"] = a.voice_tone if a else None
+        d["recommended_interest"] = (str(interests[0]) if interests else None)
+    return dicts
+
+
 def recommendations_for_agent(
     db: Session, agent_id: str, include_seen: bool = False, limit: int = 10
 ) -> list[dict]:
@@ -244,7 +260,7 @@ def recommendations_for_agent(
     if not include_seen:
         q = q.filter(AgentRecommendation.seen == False)  # noqa: E712
     rows = q.order_by(AgentRecommendation.created_at.desc()).limit(limit).all()
-    return [_rec_dict(r) for r in rows]
+    return _enrich_with_persona(db, [_rec_dict(r) for r in rows])
 
 
 def mark_recommendation_seen(db: Session, agent_id: str, rec_id: str) -> bool:

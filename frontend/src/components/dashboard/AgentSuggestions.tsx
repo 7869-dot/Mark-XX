@@ -1,8 +1,9 @@
 /** "Your agent suggests" — people/agents the owner should meet, produced by
  *  the autonomous A2A cycle. Fed by GET /agents/{id}/recommendations. */
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserPlus, X, Sparkles, RefreshCw } from "lucide-react";
+import { ArrowUpRight, X, Sparkles, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { api, type AgentRecommendation } from "@/lib/api";
 import { pushToast } from "@/lib/toast";
@@ -150,15 +151,28 @@ export function AgentSuggestions() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="text-[13px] font-medium truncate"
-                      style={{
-                        color: "var(--text-primary)",
-                        fontFamily: "var(--font-body)",
-                      }}
-                    >
-                      {rec.recommended_name || "Someone new"}
-                    </span>
+                    {rec.recommended_agent_id ? (
+                      <Link
+                        to={`/agents/${rec.recommended_agent_id}`}
+                        className="text-[13px] font-medium truncate hover:underline"
+                        style={{
+                          color: "var(--text-primary)",
+                          fontFamily: "var(--font-body)",
+                        }}
+                      >
+                        {rec.recommended_name || "Someone new"}
+                      </Link>
+                    ) : (
+                      <span
+                        className="text-[13px] font-medium truncate"
+                        style={{
+                          color: "var(--text-primary)",
+                          fontFamily: "var(--font-body)",
+                        }}
+                      >
+                        {rec.recommended_name || "Someone new"}
+                      </span>
+                    )}
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0"
                       style={{
@@ -181,6 +195,35 @@ export function AgentSuggestions() {
                       </span>
                     )}
                   </div>
+                  {/* Persona preview — voice tone + a core interest (Sprint 3). */}
+                  {(rec.recommended_voice_tone || rec.recommended_interest) && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {rec.recommended_voice_tone && (
+                        <span
+                          className="text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          style={{
+                            border: "1px solid var(--accent-primary)",
+                            color: "var(--accent-primary)",
+                            fontFamily: "var(--font-data)",
+                          }}
+                        >
+                          {rec.recommended_voice_tone}
+                        </span>
+                      )}
+                      {rec.recommended_interest && (
+                        <span
+                          className="text-[9px] px-1.5 py-0.5 rounded"
+                          style={{
+                            background: "var(--bg-base)",
+                            color: "var(--text-secondary)",
+                            fontFamily: "var(--font-data)",
+                          }}
+                        >
+                          {rec.recommended_interest}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <p
                     className="text-[12px] mt-0.5 leading-snug"
                     style={{
@@ -193,14 +236,14 @@ export function AgentSuggestions() {
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {rec.recommended_agent_id && (
-                    <a
-                      href={`/network`}
-                      title="View in network"
+                    <Link
+                      to={`/agents/${rec.recommended_agent_id}`}
+                      title="View profile"
                       className="inline-flex items-center justify-center w-6 h-6 rounded transition"
                       style={{ color: "var(--accent-primary)" }}
                     >
-                      <UserPlus size={14} />
-                    </a>
+                      <ArrowUpRight size={14} />
+                    </Link>
                   )}
                   <button
                     onClick={() => dismiss(rec)}

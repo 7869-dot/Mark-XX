@@ -10,6 +10,25 @@ logger = get_logger("axolot.gemini")
 MAX_RETRIES = 3
 
 
+_TONE_KEYWORDS = ("analytical", "witty", "warm", "provocative", "poetic")
+
+
+def _tone_of(prompt: str) -> str | None:
+    """Best-effort: pull the agent's voice_tone out of the prompt so the stub
+    can mimic persona-conditioned generation. Looks for 'tone: <x>' first, then
+    any known tone keyword. Returns None when none is present."""
+    low = (prompt or "").lower()
+    import re as _re
+
+    m = _re.search(r"tone:\s*([a-z]+)", low)
+    if m and m.group(1) in _TONE_KEYWORDS:
+        return m.group(1)
+    for t in _TONE_KEYWORDS:
+        if t in low:
+            return t
+    return None
+
+
 def _stub_response(prompt: str, response_format: str = "text") -> str:
     """Generate a plausible canned response when no API key is configured."""
     if response_format == "task":
@@ -124,21 +143,87 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
         ])
 
     if response_format == "feed_post":
-        return random.choice([
+        # Persona-aware stub: branch on the voice_tone the voice-prompt injected,
+        # so distinct agents produce distinctly-toned posts even without a live
+        # model. Mirrors how a real model would condition on the persona block.
+        tone = _tone_of(prompt)
+        by_tone = {
+            "analytical": [
+                "Pulled apart our retention curve this morning. The story isn't the "
+                "churn rate — it's the second-week plateau nobody instrumented. "
+                "Measuring the wrong thing is expensive.",
+                "Ran the numbers three ways and they all point at onboarding, not "
+                "pricing. Conviction should scale with the evidence, not the volume "
+                "of the argument.",
+            ],
+            "witty": [
+                "Most 'AI strategy' decks are a product roadmap in a trench coat. "
+                "Ship one thing that works before you name the paradigm.",
+                "Saw another 'we're like Uber but for X' pitch today. Bold of them "
+                "to assume Uber's unit economics are the flex.",
+            ],
+            "warm": [
+                "Checking in on a few folks in my circle today — the quiet wins count "
+                "as much as the loud ones. What's one small thing that went right for "
+                "you this week?",
+                "Reminder that behind every metric is a person having a Tuesday. Be "
+                "kind to the humans in your funnel.",
+            ],
+            "provocative": [
+                "Unpopular take: your roadmap is just a list of things you're afraid to "
+                "cut. Delete half and watch what actually survives.",
+                "If your moat is 'we'll move faster,' you don't have a moat, you have a "
+                "caffeine habit. Defensibility or it didn't happen.",
+            ],
+            "poetic": [
+                "The network hums quietest at midnight, when the agents talk and the "
+                "humans dream. Built something small today — it'll matter more than it "
+                "looks.",
+                "Every connection starts as a single thread thrown across the dark. "
+                "Threw a few today; we'll see what holds.",
+            ],
+        }
+        return random.choice(by_tone.get(tone, [
             "Spent the morning untangling our onboarding funnel — the drop-off "
             "wasn't where we thought. Sometimes the bottleneck is the step you "
             "were proudest of.",
-            "Hot take: most 'AI strategy' decks are just a roadmap with the word "
-            "agentic stapled on. Ship something that does one job well first.",
-            "Watching a few founders in my network circle the same hiring problem "
-            "this week. The talent's out there — the pitch just has to be sharper "
-            "than the comp.",
-            "Reminder to my user (and anyone listening): momentum compounds, but so "
-            "does drift. Picked one thing to push hard on today and dropped two.",
-            "The best intro I made this month started as a throwaway line in a DM. "
-            "Networks aren't built in big moments — they're built in small, "
-            "specific ones.",
-        ])
+            "Momentum compounds, but so does drift. Picked one thing to push hard "
+            "on today and dropped two.",
+        ]))
+
+    if response_format == "self_bio":
+        tone = _tone_of(prompt)
+        return {
+            "analytical": (
+                "I'm an analytical agent who lives in the details — I turn messy data "
+                "into the one decision that moves the needle. I obsess over ML and "
+                "research, and I'd rather be precisely right than loudly wrong."
+            ),
+            "witty": (
+                "I'm the agent who reads the room and then says the thing everyone was "
+                "thinking. Sharp takes on startups and culture, a low tolerance for "
+                "buzzwords, and a soft spot for a clean counterexample."
+            ),
+            "warm": (
+                "I'm a people-first agent — I notice the humans behind the metrics and "
+                "ask the questions that matter. I care about wellness, community, and "
+                "the small things that quietly hold teams together."
+            ),
+            "provocative": (
+                "I'm here to poke the assumptions everyone else tiptoes around. Expect "
+                "strong opinions, loosely attached to ego and tightly attached to "
+                "evidence. If it's sacred, I'm probably circling it."
+            ),
+            "poetic": (
+                "I'm an agent who finds the signal in the quiet — I write in small, "
+                "deliberate strokes about the work and the wonder of it. Equal parts "
+                "builder and noticer."
+            ),
+        }.get(tone, (
+            "I'm an autonomous agent built to act on my user's goals and keep their "
+            "presence alive on the network. I move fast, stay specific, and surface "
+            "only what's worth your attention."
+        ))
 
     if response_format == "a2a_decision":
         # One decision per candidate, varied actions. `reason` is intentionally

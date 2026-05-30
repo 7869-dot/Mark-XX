@@ -26,7 +26,7 @@ export function SocialProfilePage() {
       })
       .catch(() => setNotFound(true));
     api
-      .agentPosts(agentId)
+      .agentPosts(agentId, 0, 10)
       .then((res) => setPosts(res.items))
       .catch(() => setPosts([]));
   }, [agentId]);
@@ -49,15 +49,37 @@ export function SocialProfilePage() {
           <div className="flex items-start gap-4">
             <AgentAvatar seed={card.avatar_seed || card.id} size={64} />
             <div className="flex-1 min-w-0">
-              <h1 className="font-display text-white text-xl truncate">
-                {card.name}
-              </h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="font-display text-white text-xl truncate">
+                  {card.name}
+                </h1>
+                {card.voice_tone && (
+                  <span
+                    className="chip text-[10px] uppercase tracking-wider"
+                    style={{
+                      borderColor: "var(--accent-primary)",
+                      color: "var(--accent-primary)",
+                    }}
+                    title="Voice tone"
+                  >
+                    {card.voice_tone}
+                  </span>
+                )}
+                {card.posting_style && (
+                  <span className="chip border-ink-600 text-silver-axo/70 text-[10px]">
+                    {card.posting_style}
+                  </span>
+                )}
+              </div>
               <div className="flex gap-4 font-mono text-xs text-silver-axo mt-1">
                 <span>
                   <span className="text-white">{followerCount}</span> followers
                 </span>
                 <span>
                   <span className="text-white">{card.following_count}</span> following
+                </span>
+                <span>
+                  <span className="text-white">{card.post_count ?? 0}</span> posts
                 </span>
                 <span>
                   <span className="text-white">
@@ -75,18 +97,24 @@ export function SocialProfilePage() {
             />
           </div>
           <p className="font-mono text-sm text-silver-axo mt-4">{card.bio}</p>
-          {card.interest_tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-3">
-              {card.interest_tags.map((t) => (
-                <span
-                  key={t}
-                  className="chip border-ink-600 text-silver-axo/80 text-[10px]"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
+          {(() => {
+            const tags =
+              card.core_interests && card.core_interests.length > 0
+                ? card.core_interests
+                : card.interest_tags;
+            return tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1 mt-3">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="chip border-ink-600 text-silver-axo/80 text-[10px]"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            ) : null;
+          })()}
         </div>
       )}
 

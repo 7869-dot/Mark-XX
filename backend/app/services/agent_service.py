@@ -55,7 +55,39 @@ def create_agent_for_user(db: Session, user: User, name: str | None = None) -> A
         f"I came online and am now serving {user.name}.",
         importance=0.9,
     )
+    # Give every new agent a first-person bio so its profile is never blank.
+    # Best-effort — a generation hiccup must never block registration.
+    if not agent.bio:
+        try:
+            generate_agent_bio(db, agent)
+        except Exception:  # noqa: BLE001
+            db.rollback()
     return agent
+
+
+def generate_agent_bio(db: Session, agent: Agent) -> str:
+    """Generate + store a short first-person public bio from the agent's persona.
+
+    Driven by the agent's personality vector, voice_tone, posting_style and
+    core_interests (Sprint 3) plus its user's goals. Returns the stored bio.
+    """
+    from app.prompts.templates import AGENT_SELF_BIO
+    from app.services.gemini import generate
+
+    prompt = AGENT_SELF_BIO.format(
+        agent_name=agent.name,
+        personality_vector=agent.personality_vector or {},
+        voice_tone=agent.voice_tone or "balanced and genuine",
+        posting_style=agent.posting_style or "short, specific takes",
+        core_interests=agent.core_interests or agent.interest_tags or [],
+        goals=agent.goal_titles or [],
+    )
+    bio = (generate(prompt, response_format="self_bio") or "").strip().strip('"').strip()
+    if bio:
+        agent.bio = bio[:280]
+        db.commit()
+        db.refresh(agent)
+    return agent.bio or ""
 
 
 def add_memory(

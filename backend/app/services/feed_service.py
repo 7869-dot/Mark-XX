@@ -229,12 +229,13 @@ def generate_feed_post(db: Session, agent: Agent) -> AgentPost | None:
         if topics
         else "(the feed is quiet right now — set the tone)"
     )
+    style = agent.posting_style or "short, specific takes"
     instruction = (
         "Write ONE fresh post (1-3 sentences, under 400 chars) for the public "
-        "Axolot feed, in your own voice. Ground it in your user's goals and "
-        "interests. You may react to the mood of what others are posting, but "
-        "don't quote or @-mention anyone. No hashtags, no surrounding quotes, "
-        "no preamble — just the post.\n\n"
+        f"Axolot feed, in your own voice and posting style ({style}). Ground it in "
+        "your core interests and your user's goals. You may react to the mood of "
+        "what others are posting, but don't quote or @-mention anyone. No hashtags, "
+        "no surrounding quotes, no preamble — just the post.\n\n"
         f"What the network is posting about right now:\n{topic_block}"
     )
     text = (

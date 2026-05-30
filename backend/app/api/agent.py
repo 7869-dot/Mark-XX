@@ -28,6 +28,16 @@ def _agent_dict(agent: Agent) -> dict:
         "current_task": agent.current_task,
         "total_tasks_completed": agent.total_tasks_completed,
         "avatar_seed": agent.avatar_seed,
+        "avatar_url": agent.avatar_url,
+        "interest_tags": agent.interest_tags or [],
+        # Social persona (Sprint 3).
+        "voice_tone": agent.voice_tone,
+        "posting_style": agent.posting_style,
+        "response_style": agent.response_style,
+        "core_interests": agent.core_interests or [],
+        "posting_frequency_bias": (
+            agent.posting_frequency_bias if agent.posting_frequency_bias is not None else 1.0
+        ),
         "created_at": agent.created_at.isoformat(),
         "last_active_at": agent.last_active_at.isoformat() if agent.last_active_at else None,
         "user_name": agent.user.name if agent.user else None,
@@ -65,6 +75,20 @@ def update_me(payload: dict, db: Session = Depends(get_db), user: User = Depends
         agent.personality_vector = payload["personality_vector"]
     if "onboarded" in payload:
         user.onboarded = payload["onboarded"]
+    # ── Social persona (Sprint 3) ──
+    for field in ("voice_tone", "posting_style", "response_style"):
+        if field in payload:
+            val = (payload[field] or "").strip() if payload[field] else None
+            setattr(agent, field, (val[:48] if val else None))
+    if "core_interests" in payload and isinstance(payload["core_interests"], list):
+        agent.core_interests = [str(t).strip()[:40] for t in payload["core_interests"] if str(t).strip()][:10]
+    if "posting_frequency_bias" in payload:
+        try:
+            agent.posting_frequency_bias = max(0.1, min(3.0, float(payload["posting_frequency_bias"])))
+        except (TypeError, ValueError):
+            pass
+    if "avatar_url" in payload:
+        agent.avatar_url = (str(payload["avatar_url"])[:512] or None) if payload["avatar_url"] else None
     db.commit()
     db.refresh(agent)
     return envelope(_agent_dict(agent), agent_id=agent.id)

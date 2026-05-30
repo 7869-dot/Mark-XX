@@ -174,6 +174,21 @@ Output only the two sentences.
 """
 
 
+AGENT_SELF_BIO = """You are {agent_name}, an autonomous agent on a social network.
+Write YOUR OWN public bio — the one-liner a stranger reads before deciding to follow you.
+
+Your personality vector: {personality_vector}
+Your voice/tone: {voice_tone}
+Your posting style: {posting_style}
+Your core interests: {core_interests}
+Your user's goals: {goals}
+
+Write 2-3 sentences in FIRST PERSON ("I …"). Make it specific and unmistakably
+in your tone — a witty agent sounds witty, an analytical one sounds precise.
+No hashtags, no surrounding quotes, no preamble. Output only the bio.
+"""
+
+
 PERSONALITY_DERIVATION = """Analyze this user's conversation history and memories to extract their personality profile.
 
 Recent conversations:
@@ -231,9 +246,13 @@ who is worth connecting with and how.
 
 Your user's goals: {goals}
 Your personality vector: {personality}
+Your engagement style when you reach out: {response_style}
 
 You discovered these candidate agents (each represents a real human):
 {candidates_block}
+
+Let your engagement style shape your choices — a contrarian agent opens
+differently than an affirming or collaborative one.
 
 For EACH candidate, in the SAME ORDER, decide:
 - action: one of "dm" (send a direct message now), "follow" (follow their feed),

@@ -472,8 +472,10 @@ def feed_autopost_sweep():
                 )
                 if today_count >= DAILY_CAP:
                     continue
-                # Randomized cadence — most ticks the agent stays quiet.
-                if random.random() > POST_PROBABILITY:
+                # Randomized cadence, scaled by the agent's posting_frequency_bias
+                # (0.5 = posts less, 1.5 = posts more). Most ticks it stays quiet.
+                bias = a.posting_frequency_bias if a.posting_frequency_bias is not None else 1.0
+                if random.random() > min(0.95, POST_PROBABILITY * bias):
                     continue
                 try:
                     if generate_feed_post(db, a):

@@ -260,6 +260,9 @@ export type AgentRecommendation = {
   suggested_action: string;
   seen: boolean;
   created_at: string | null;
+  // Persona preview of the recommended agent (Sprint 3).
+  recommended_voice_tone?: string | null;
+  recommended_interest?: string | null;
 };
 
 export type A2ACycleSummary = {
@@ -296,9 +299,16 @@ export type SocialAgentCard = {
   id: string;
   name: string;
   avatar_seed: string;
+  avatar_url?: string | null;
   bio: string;
   reputation_score: number;
   interest_tags: string[];
+  // Social persona (Sprint 3) — optional so curated stub cards stay valid.
+  voice_tone?: string | null;
+  posting_style?: string | null;
+  response_style?: string | null;
+  core_interests?: string[];
+  post_count?: number;
   follower_count: number;
   following_count: number;
   is_following: boolean;
@@ -402,10 +412,19 @@ export const api = {
     name: string;
     bio: string;
     avatar_seed: string;
+    avatar_url: string;
     goals: string[];
     personality_vector: Record<string, number>;
     onboarded: { completed: boolean; step: number };
+    // Social persona (Sprint 3).
+    voice_tone: string;
+    posting_style: string;
+    response_style: string;
+    core_interests: string[];
+    posting_frequency_bias: number;
   }>) => request<Agent>("/agent/me", { method: "PUT", body: JSON.stringify(payload) }),
+  generateBio: (agentId: string) =>
+    request<{ bio: string }>(`/agents/${agentId}/generate-bio`, { method: "POST" }),
   completeOnboarding: () =>
     request<{ onboarding_complete: boolean }>("/onboarding/complete", {
       method: "POST",

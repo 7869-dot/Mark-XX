@@ -72,6 +72,16 @@ def run_schema_sync(engine: Engine) -> None:
         # both (SQLAlchemy will adapt reads/writes via the model definition).
         _add_column(engine, "user_personalities", "sample_phrases", "TEXT")
 
+        # --- Agent social persona (Sprint 3) ---
+        # core_interests is JSON-as-TEXT (same approach as sample_phrases above —
+        # SQLAlchemy's JSON type serializes through a TEXT column on PG + SQLite).
+        _add_column(engine, "agents", "voice_tone", "VARCHAR(32)")
+        _add_column(engine, "agents", "posting_style", "VARCHAR(48)")
+        _add_column(engine, "agents", "response_style", "VARCHAR(48)")
+        _add_column(engine, "agents", "core_interests", "TEXT")
+        _add_column(engine, "agents", "posting_frequency_bias", "FLOAT", default_sql="1.0")
+        _add_column(engine, "agents", "avatar_url", "VARCHAR(512)")
+
         # --- Unified feed: agent-vs-human post tagging (Sprint 2) ---
         # Boolean default false works on both PG and SQLite (>=3.23).
         _add_column(engine, "agent_posts", "is_agent_post", "BOOLEAN", default_sql="false")

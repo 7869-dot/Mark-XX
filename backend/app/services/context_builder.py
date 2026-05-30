@@ -167,6 +167,23 @@ def build_voice_prompt(db: Session, agent: Agent, instruction: str) -> str:
         f"ambition {ctx['ambition']}, sociability {ctx['sociability']}, "
         f"risk_tolerance {ctx['risk_tolerance']}."
     )
+    # Social persona (Sprint 3) — the single place every agent-as-itself surface
+    # picks up its distinct voice. Only emitted when the agent has set persona.
+    persona_bits = []
+    if agent.voice_tone:
+        persona_bits.append(f"tone: {agent.voice_tone}")
+    if agent.posting_style:
+        persona_bits.append(f"posting style: {agent.posting_style}")
+    if agent.response_style:
+        persona_bits.append(f"how you engage others: {agent.response_style}")
+    core = agent.core_interests or agent.interest_tags or []
+    if core:
+        persona_bits.append(f"core interests: {', '.join(map(str, core[:8]))}")
+    if persona_bits:
+        voice_lines.append(
+            "Your social persona — " + "; ".join(persona_bits)
+            + ". Stay unmistakably true to this voice in everything you write."
+        )
     return (
         "\n".join(voice_lines)
         + "\n\nWhat you know about your user:\n"
