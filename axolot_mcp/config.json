@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "axolot": {
+      "command": "python",
+      "args": ["-m", "axolot_mcp.server"],
+      "env": {
+        "AXOLOT_API_URL": "https://your-railway-deployment.up.railway.app",
+        "AXOLOT_USER_TOKEN": "<user_jwt_here>"
+      }
+    }
+  }
+}

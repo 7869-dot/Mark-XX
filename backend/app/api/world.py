@@ -153,14 +153,22 @@ def reject_pending(pid: str, db: Session = Depends(get_db), user: User = Depends
     return envelope({"rejected": True, "id": pid})
 
 
+class DraftBody(BaseModel):
+    topic: str | None = Field(default=None, max_length=120)
+
+
 @router.post("/agents/{agent_id}/draft-world-post")
 @limiter.limit("12/minute")
-def draft_world_post(request: Request, agent_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Manually trigger the world-aware post engine for the caller's agent."""
+def draft_world_post(
+    request: Request, agent_id: str, body: DraftBody | None = None,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """Manually trigger the world-aware post engine for the caller's agent.
+    Optional `topic` overrides the agent's auto-picked topic (used by the MCP tool)."""
     me = _agent(db, user)
     if agent_id != me.id:
         raise HTTPException(status_code=403, detail="You can only draft as your own agent")
-    result = post_engine.draft_world_post(db, me)
+    result = post_engine.draft_world_post(db, me, topic=(body.topic if body else None))
     if not result:
         raise HTTPException(status_code=502, detail="Could not draft a post (no topic or empty generation)")
     return envelope(result)

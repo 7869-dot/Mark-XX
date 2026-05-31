@@ -176,6 +176,59 @@ def run_for_agent(db: Session, agent: Agent) -> int:
     return proposals
 
 
+def initiate_with(db: Session, from_agent: Agent, target_user, intent: str) -> dict:
+    """Explicit, user-driven collaboration reach-out (e.g. from the MCP tool).
+
+    The user *chose* this, so it doesn't require a mutual follow — but it still
+    passes through the privacy filter (intent PII-stripped, action audited) and
+    only ever transmits the derived intent, never the worldview behind it.
+    """
+    from app.services.agent_service import get_primary_agent
+
+    target_agent = get_primary_agent(db, target_user.id)
+    if not target_agent:
+        return {"ok": False, "reason": "target_has_no_agent"}
+    if target_agent.id == from_agent.id:
+        return {"ok": False, "reason": "self"}
+
+    names = [n for n in [(from_agent.user.name if from_agent.user else None), from_agent.name] if n]
+    safe = privacy_filter.strip_pii(intent, names=names) or "Someone wants to collaborate."
+
+    lo, hi = _ordered(from_agent.id, target_agent.id)
+    sess = (
+        db.query(CollaborationSession)
+        .filter(CollaborationSession.agent_a_id == lo, CollaborationSession.agent_b_id == hi)
+        .first()
+    )
+    if not sess:
+        sess = CollaborationSession(agent_a_id=lo, agent_b_id=hi, state=SESSION_ACTIVE)
+        db.add(sess)
+        db.commit()
+        db.refresh(sess)
+
+    privacy_filter.audit(
+        db, from_agent, target_user.id, action="a2a_intent_signal",
+        reason="User initiated a direct collaboration reach-out.",
+        metadata={"signal": safe, "channel": "collaboration"}, commit=False,
+    )
+    proposal_text = _negotiate(db, from_agent, safe, "an explicit reach-out from someone who wants to connect")
+    p = CollaborationProposal(
+        session_id=sess.id, from_agent_id=from_agent.id, to_agent_id=target_agent.id,
+        to_user_id=target_user.id, from_intent=safe, proposal_text=proposal_text, status=PROPOSAL_PENDING,
+    )
+    db.add(p)
+    sess.state = SESSION_PROPOSED
+    db.commit()
+    db.refresh(p)
+    if target_user.id:
+        notifications.notify(
+            db, target_user.id, NotificationType.RECOMMENDATION,
+            f"{from_agent.name} wants to collaborate", proposal_text, link="/collab",
+        )
+    log_event(logger, "collab_initiated", from_agent=from_agent.id, to_user=target_user.id)
+    return {"ok": True, "proposal_id": p.id, "intent": safe, "proposal_text": proposal_text}
+
+
 def collaboration_sweep(db: Session) -> int:
     """Scheduler entry — open/refresh sessions for all mutual-follow pairs."""
     edges = db.query(AgentFollow.follower_agent_id, AgentFollow.following_agent_id).all()

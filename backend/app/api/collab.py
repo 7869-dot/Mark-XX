@@ -1,5 +1,7 @@
 """Sprint 6 API — private inter-agent collaboration (proposals inbox)."""
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.envelope import envelope
@@ -36,6 +38,30 @@ def decline(proposal_id: str, db: Session = Depends(get_db), user: User = Depend
     if not res:
         raise HTTPException(status_code=404, detail="proposal not found")
     return envelope(res)
+
+
+class InitiateBody(BaseModel):
+    target: str = Field(..., min_length=1, max_length=120)  # email or display name
+    intent: str = Field(..., min_length=1, max_length=300)
+
+
+@router.post("/initiate")
+@limiter.limit("10/minute")
+def initiate(request: Request, body: InitiateBody, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Explicit reach-out to another user's agent (used by the MCP tool).
+    PII is stripped from `intent` before it's transmitted."""
+    if not user.agent:
+        raise HTTPException(status_code=400, detail="no_agent")
+    t = body.target.strip()
+    target = (
+        db.query(User)
+        .filter(or_(func.lower(User.email) == t.lower(), func.lower(User.name) == t.lower()))
+        .first()
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="target user not found")
+    res = agent_collab.initiate_with(db, user.agent, target, body.intent)
+    return envelope(res, agent_id=user.agent.id)
 
 
 @router.post("/run")

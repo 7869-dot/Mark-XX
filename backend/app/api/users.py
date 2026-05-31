@@ -46,6 +46,54 @@ def update_me(
     return envelope(_user_dict(user), agent_id=user.agent.id if user.agent else None)
 
 
+class MemoryUpdate(BaseModel):
+    key: str = Field(..., min_length=1, max_length=40)
+    value: str = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/me/memory")
+def update_memory(
+    payload: MemoryUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update the user's PersonalityMatrix / TopicInterestProfile from any client
+    (used by the MCP agent_memory_update tool).
+
+    key:
+      topic|interest        -> add to the TopicInterestProfile
+      communication_style   -> set the speech style
+      goal                  -> append to the user's goals
+      anything else         -> appended to personality notes
+    """
+    from app.models import UserPersonality
+    from app.services import agent_web
+
+    key = payload.key.strip().lower()
+    value = payload.value.strip()
+    applied = key
+
+    if key in ("topic", "interest"):
+        agent_web.upsert_topic(db, user.id, value, source="manual", delta=1.0)
+        applied = "topic"
+    elif key == "goal":
+        user.goals = list(user.goals or []) + [value]
+        db.commit()
+    else:
+        up = db.query(UserPersonality).filter(UserPersonality.user_id == user.id).first()
+        if not up:
+            up = UserPersonality(user_id=user.id, interests=[], traits={})
+            db.add(up)
+        if key == "communication_style":
+            up.communication_style = value
+        else:
+            up.notes = ((up.notes or "") + f"\n[{key}] {value}").strip()
+            applied = "notes"
+        db.commit()
+
+    return envelope({"applied": applied, "key": key}, agent_id=user.agent.id if user.agent else None)
+
+
 @router.put("/me/onboarding-complete")
 def complete_onboarding(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
