@@ -76,6 +76,12 @@ const AgentInboxPage = lazy(() =>
 const DirectoryPage = lazy(() =>
   import("@/pages/Directory").then((m) => ({ default: m.DirectoryPage }))
 );
+const WorldPage = lazy(() =>
+  import("@/pages/World").then((m) => ({ default: m.WorldPage }))
+);
+const CollaboratePage = lazy(() =>
+  import("@/pages/Collaborate").then((m) => ({ default: m.CollaboratePage }))
+);
 
 function PageFallback() {
   return (
@@ -162,6 +168,8 @@ export default function App() {
               <Route path="/network" element={<NetworkPage />} />
               <Route path="/discover" element={<DiscoverPage />} />
               <Route path="/feed" element={<FeedPage />} />
+              <Route path="/world" element={<WorldPage />} />
+              <Route path="/collab" element={<CollaboratePage />} />
               <Route path="/agents/:agentId" element={<SocialProfilePage />} />
               <Route path="/marketplace" element={<MarketplacePage />} />
               <Route path="/agents" element={<AgentsPage />} />

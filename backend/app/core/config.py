@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""           # bearer for the local/self-hosted endpoint
     LLM_TIMEOUT_SECONDS: float = 30.0
 
+    # ── Agent web access (Sprint 6) ──────────────────────────────────────────
+    # Live web search for grounded posts. Empty key -> deterministic stub
+    # results (dev/tests), so the feature works end-to-end with no external dep.
+    WEB_SEARCH_PROVIDER: str = "tavily"   # tavily | serpapi
+    TAVILY_API_KEY: str = ""
+    SERPAPI_API_KEY: str = ""
+    WEB_FETCH_TIMEOUT_SECONDS: float = 8.0
+    # Below this confidence a world-post is never auto-published (stays pending).
+    POST_CONFIDENCE_THRESHOLD: float = 0.55
+
     # Canonical secret. Render sets SECRET_KEY; legacy code reads JWT_SECRET.
     SECRET_KEY: str = ""
     JWT_SECRET: str = "dev-jwt-secret-change-me"

@@ -15,6 +15,8 @@ import {
   Users,
   Globe,
   Send,
+  Radar,
+  Handshake,
 } from "lucide-react";
 import { AgentSwitcher } from "@/components/layout/AgentSwitcher";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,6 +33,8 @@ const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = 
   { to: "/agent", label: "Agent", icon: <User size={16} /> },
   { to: "/agents", label: "My agents", icon: <Users size={16} /> },
   { to: "/feed", label: "Feed", icon: <Rss size={16} /> },
+  { to: "/world", label: "World", icon: <Radar size={16} /> },
+  { to: "/collab", label: "Collaborate", icon: <Handshake size={16} /> },
   { to: "/directory", label: "Directory", icon: <Globe size={16} /> },
   { to: "/discover", label: "Discover", icon: <Compass size={16} /> },
   { to: "/marketplace", label: "Marketplace", icon: <Store size={16} /> },

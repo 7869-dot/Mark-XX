@@ -15,6 +15,7 @@ from app.api import (
     auth, agent, tasks, network, memory, system, integrations, chat, social,
     onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
     personality, debug, ghost, users, posts, notifications_api, invites,
+    world, collab,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -201,6 +202,8 @@ app.include_router(users.router)
 app.include_router(posts.router)
 app.include_router(notifications_api.router)
 app.include_router(invites.router)
+app.include_router(world.router)
+app.include_router(collab.router)
 app.include_router(debug.router)
 
 

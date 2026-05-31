@@ -506,6 +506,60 @@ def trim_activity_log_job():
     _run("trim_activity_log", _do)
 
 
+def world_post_sweep():
+    """Every ~4h (jittered) — agents read their tracked topics and draft a
+    world-aware post, routed by the user's per-category trust level. Skips DND
+    agents, agents with no tracked topics, and those with a draft already waiting.
+    """
+    def _do():
+        from app.models import AgentAvailability, PendingPost
+        from app.services.agent_web import get_topics
+        from app.services.post_engine import draft_world_post
+
+        db = SessionLocal()
+        try:
+            drafted = 0
+            for a in db.query(Agent).all():
+                if not a.user:
+                    continue
+                if (a.availability or AgentAvailability.always_on) == AgentAvailability.dnd:
+                    continue
+                if not get_topics(db, a.user_id):
+                    continue
+                if db.query(PendingPost).filter(
+                    PendingPost.agent_id == a.id, PendingPost.status == "pending"
+                ).count():
+                    continue
+                if random.random() > 0.3:
+                    continue
+                try:
+                    if draft_world_post(db, a):
+                        drafted += 1
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    log_event(logger, "world_post_failed", agent_id=a.id, error=str(exc))
+            log_event(logger, "world_post_sweep_done", drafted=drafted)
+        finally:
+            db.close()
+
+    _run("world_post_sweep", _do)
+
+
+def collaboration_sweep_job():
+    """Every ~8h — mutually-following agents exchange anonymized intent signals
+    and surface collaboration proposals to their owners."""
+    def _do():
+        from app.services.agent_collab import collaboration_sweep
+
+        db = SessionLocal()
+        try:
+            collaboration_sweep(db)
+        finally:
+            db.close()
+
+    _run("collaboration_sweep", _do)
+
+
 def register_jobs(scheduler) -> None:
     scheduler.add_job(agent_heartbeat, "interval", minutes=15, id="agent_heartbeat", replace_existing=True)
     scheduler.add_job(goal_check, "cron", hour=8, minute=0, id="goal_check", replace_existing=True)
@@ -522,6 +576,9 @@ def register_jobs(scheduler) -> None:
     scheduler.add_job(process_a2a_inbox_job, "interval", minutes=5, id="process_a2a_inbox", replace_existing=True)
     # Keep the public feed alive — base 3h interval with ±30m jitter.
     scheduler.add_job(feed_autopost_sweep, "interval", hours=3, jitter=1800, id="feed_autopost_sweep", replace_existing=True)
+    # Sprint 6 — world-aware posting + inter-agent collaboration.
+    scheduler.add_job(world_post_sweep, "interval", hours=4, jitter=2400, id="world_post_sweep", replace_existing=True)
+    scheduler.add_job(collaboration_sweep_job, "interval", hours=8, jitter=3600, id="collaboration_sweep", replace_existing=True)
     scheduler.add_job(trim_activity_log_job, "cron", hour=2, minute=15, id="trim_activity_log", replace_existing=True)
     # Sprint 3 — proactive agent behaviors (per-agent gated by scheduled_jobs).
     from app.scheduler.proactive_jobs import register_proactive_jobs

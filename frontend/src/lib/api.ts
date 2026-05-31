@@ -332,6 +332,60 @@ export async function fetchAgentCard(agentId: string): Promise<AgentCard> {
   return json.data as AgentCard;
 }
 
+export type TopicInterest = {
+  id: string;
+  topic: string;
+  category: string;
+  weight: number;
+  source: string;
+  feed_url: string | null;
+};
+
+export type WorldPulseItem = {
+  topic: string;
+  category: string;
+  weight: number;
+  source: string;
+  feed_url: string | null;
+};
+
+export type SearchResult = { title: string; url: string; snippet: string };
+
+export type PendingPostItem = {
+  id: string;
+  content: string;
+  topic: string;
+  category: string;
+  confidence_score: number;
+  source_list: { title: string; url: string }[];
+  status: string;
+  created_at: string | null;
+};
+
+export type TrustState = {
+  categories: string[];
+  levels: string[];
+  settings: Record<string, string>;
+};
+
+export type CollabProposal = {
+  id: string;
+  from_agent: { id: string; name: string; avatar_seed: string } | null;
+  from_intent: string;
+  proposal_text: string;
+  status: string;
+  created_at: string | null;
+};
+
+export type PrivacyAuditItem = {
+  id: string;
+  action: string;
+  reason: string;
+  subject_name: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+};
+
 export type AgentActivityItem = {
   id: string;
   action_type: string;
@@ -672,6 +726,51 @@ export const api = {
       "/invites/redeem",
       { method: "POST", body: JSON.stringify({ code }) }
     ),
+
+  // ── Sprint 6: web access, world posts, trust, collaboration ──
+  webTopics: () => request<{ items: TopicInterest[] }>("/web/topics"),
+  addTopic: (topic: string, feed_url?: string) =>
+    request<TopicInterest>("/web/topics", {
+      method: "POST",
+      body: JSON.stringify({ topic, feed_url }),
+    }),
+  deleteTopic: (id: string) =>
+    request<{ deleted: boolean; id: string }>(`/web/topics/${id}`, { method: "DELETE" }),
+  worldPulse: () => request<{ items: WorldPulseItem[] }>("/web/pulse"),
+  webSearch: (query: string) =>
+    request<{ query: string; results: SearchResult[] }>("/web/search", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+  getTrust: () => request<TrustState>("/web/trust"),
+  setTrust: (category: string, level: string) =>
+    request<{ settings: Record<string, string> }>("/web/trust", {
+      method: "PUT",
+      body: JSON.stringify({ category, level }),
+    }),
+  pendingPosts: () => request<{ items: PendingPostItem[] }>("/web/pending"),
+  editPending: (id: string, content: string) =>
+    request<PendingPostItem>(`/web/pending/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    }),
+  approvePending: (id: string) =>
+    request<{ published: boolean; post_id: string }>(`/web/pending/${id}/approve`, { method: "POST" }),
+  rejectPending: (id: string) =>
+    request<{ rejected: boolean; id: string }>(`/web/pending/${id}/reject`, { method: "POST" }),
+  draftWorldPost: (agentId: string) =>
+    request<{
+      pending_id: string; status: string; published: boolean; confidence: number;
+      topic: string; category: string; sources: { title: string; url: string }[]; content: string;
+    }>(`/agents/${agentId}/draft-world-post`, { method: "POST" }),
+  privacyAudit: () => request<{ items: PrivacyAuditItem[] }>("/web/audit"),
+
+  collabProposals: () => request<{ items: CollabProposal[] }>("/collab/proposals"),
+  acceptProposal: (id: string) =>
+    request<{ id: string; status: string }>(`/collab/proposals/${id}/accept`, { method: "POST" }),
+  declineProposal: (id: string) =>
+    request<{ id: string; status: string }>(`/collab/proposals/${id}/decline`, { method: "POST" }),
+  runCollab: () => request<{ proposals_created: number }>("/collab/run", { method: "POST" }),
 
   // marketplace — agent templates
   marketplace: () =>

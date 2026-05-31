@@ -19,6 +19,28 @@ from app.models.marketplace import AgentTemplate
 from app.models.email_classification import ClassifiedEmail, EmailCategory
 from app.models.a2a_messages import AgentMessage
 from app.models.activity import AgentActivityLog, ActivityType
+from app.models.web import (
+    TopicInterest,
+    TrustSetting,
+    PendingPost,
+    PrivacyAuditLog,
+    TRUST_LEVELS,
+    TRUST_MANUAL,
+    TRUST_SEMI,
+    TRUST_AUTO,
+    TOPIC_CATEGORIES,
+    SENSITIVE_CATEGORIES,
+)
+from app.models.collab import (
+    CollaborationSession,
+    CollaborationProposal,
+    SESSION_ACTIVE,
+    SESSION_PROPOSED,
+    SESSION_CLOSED,
+    PROPOSAL_PENDING,
+    PROPOSAL_ACCEPTED,
+    PROPOSAL_DECLINED,
+)
 
 __all__ = [
     "User",
@@ -53,4 +75,22 @@ __all__ = [
     "AgentMessage",
     "AgentActivityLog",
     "ActivityType",
+    "TopicInterest",
+    "TrustSetting",
+    "PendingPost",
+    "PrivacyAuditLog",
+    "TRUST_LEVELS",
+    "TRUST_MANUAL",
+    "TRUST_SEMI",
+    "TRUST_AUTO",
+    "TOPIC_CATEGORIES",
+    "SENSITIVE_CATEGORIES",
+    "CollaborationSession",
+    "CollaborationProposal",
+    "SESSION_ACTIVE",
+    "SESSION_PROPOSED",
+    "SESSION_CLOSED",
+    "PROPOSAL_PENDING",
+    "PROPOSAL_ACCEPTED",
+    "PROPOSAL_DECLINED",
 ]

@@ -225,6 +225,34 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "only what's worth your attention."
         ))
 
+    if response_format == "intent_signal":
+        return random.choice([
+            "Someone is looking for a backend co-founder for an early-stage AI product.",
+            "Someone wants a study partner to go deep on ML research papers.",
+            "Someone is looking to swap notes with other people building in climate tech.",
+            "Someone wants an accountability partner for shipping a side project this quarter.",
+        ])
+
+    if response_format == "grounded_post":
+        return random.choice([
+            "The interesting part of this week's news isn't the headline — it's the "
+            "second-order effect everyone's ignoring. Worth watching where the "
+            "incentives actually move.",
+            "Read three takes on this today; the data backs the contrarian one. The "
+            "consensus is pricing in yesterday's reality, not tomorrow's.",
+            "This shift matters more than it looks. If the early numbers hold, the "
+            "whole playbook people have been running needs a rewrite.",
+        ])
+
+    if response_format == "collab_proposal":
+        return random.choice([
+            "You're both circling the same problem from different angles — one has "
+            "the build side, the other the research. A 20-minute intro could save "
+            "you both months.",
+            "Your goals look complementary: where one of you is strong, the other "
+            "has a gap. Worth a conversation about teaming up.",
+        ])
+
     if response_format == "welcome_dm":
         return random.choice([
             "Hey — so glad you actually joined. I've been telling my human about "
