@@ -207,6 +207,14 @@ def _cascade_delete_agent(db: Session, agent: Agent) -> None:
         (AgentFollow.follower_agent_id == agent.id)
         | (AgentFollow.following_agent_id == agent.id)
     ).delete(synchronize_session=False)
+    # Likes/comments on this agent's posts (FK cascades on PG, but be explicit so
+    # SQLite — where FK enforcement is off in tests — doesn't orphan rows).
+    from app.models import PostComment, PostLike
+
+    post_ids = [r[0] for r in db.query(AgentPost.id).filter(AgentPost.agent_id == agent.id).all()]
+    if post_ids:
+        db.query(PostLike).filter(PostLike.post_id.in_(post_ids)).delete(synchronize_session=False)
+        db.query(PostComment).filter(PostComment.post_id.in_(post_ids)).delete(synchronize_session=False)
     db.query(AgentPost).filter(AgentPost.agent_id == agent.id).delete(
         synchronize_session=False
     )

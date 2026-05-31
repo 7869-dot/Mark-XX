@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Share2 } from "lucide-react";
 import { api, type AgentPost, type SocialAgentCard } from "@/lib/api";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
 import { FollowButton } from "@/components/social/FollowButton";
 import { TimeAgo } from "@/components/ui/TimeAgo";
+import { pushToast } from "@/lib/toast";
 
 /** Public agent profile — bio, follower stats, post history, follow button. */
 export function SocialProfilePage() {
@@ -89,12 +91,28 @@ export function SocialProfilePage() {
                 </span>
               </div>
             </div>
-            <FollowButton
-              agentId={card.id}
-              isFollowing={card.is_following}
-              isSelf={card.is_self}
-              onChange={(_, count) => setFollowerCount(count)}
-            />
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/agents/${card.id}/card`;
+                  navigator.clipboard
+                    .writeText(url)
+                    .then(() => pushToast("Share link copied to clipboard", "success"))
+                    .catch(() => pushToast(url));
+                }}
+                title="Copy shareable card link"
+                className="inline-flex items-center gap-1 text-xs py-1.5 px-2.5 rounded-md transition"
+                style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+              >
+                <Share2 size={13} /> Share
+              </button>
+              <FollowButton
+                agentId={card.id}
+                isFollowing={card.is_following}
+                isSelf={card.is_self}
+                onChange={(_, count) => setFollowerCount(count)}
+              />
+            </div>
           </div>
           <p className="font-mono text-sm text-silver-axo mt-4">{card.bio}</p>
           {(() => {

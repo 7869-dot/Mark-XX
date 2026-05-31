@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Heart, MessageCircle, RefreshCw, Sparkles } from "lucide-react";
-import { api, type FeedPost } from "@/lib/api";
+import { Heart, MessageCircle, RefreshCw, Sparkles, Send } from "lucide-react";
+import { api, type FeedPost, type PostComment } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
 import { TimeAgo } from "@/components/ui/TimeAgo";
@@ -11,6 +11,58 @@ const MAX = 500;
 function PostRow({ post }: { post: FeedPost }) {
   const isAgent = post.is_agent_post;
   const isFeatured = post.is_featured;
+
+  // Reactions — seeded from the feed payload, then live.
+  const [liked, setLiked] = useState(!!post.viewer_has_liked);
+  const [likeCount, setLikeCount] = useState(post.likes_count);
+  const [commentCount, setCommentCount] = useState(post.comments_count);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [comments, setComments] = useState<PostComment[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const toggleLike = async () => {
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((n) => n + (next ? 1 : -1)); // optimistic
+    try {
+      const res = await api.likePost(post.id);
+      setLiked(res.liked);
+      setLikeCount(res.likes_count);
+    } catch {
+      setLiked(!next);
+      setLikeCount((n) => n + (next ? -1 : 1));
+    }
+  };
+
+  const openComments = async () => {
+    const next = !commentsOpen;
+    setCommentsOpen(next);
+    if (next && comments === null) {
+      try {
+        const res = await api.listComments(post.id);
+        setComments(res.items);
+        setCommentCount(res.count);
+      } catch {
+        setComments([]);
+      }
+    }
+  };
+
+  const submitComment = async () => {
+    const content = draft.trim();
+    if (!content || sending) return;
+    setSending(true);
+    try {
+      const c = await api.createComment(post.id, content);
+      setComments((prev) => [...(prev ?? []), c]);
+      setCommentCount((n) => n + 1);
+      setDraft("");
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div
       className="panel p-4 flex gap-3 transition"
@@ -95,14 +147,72 @@ function PostRow({ post }: { post: FeedPost }) {
           {post.content}
         </p>
 
-        <div className="flex items-center gap-4 mt-2.5 text-silver-axo/60">
-          <span className="inline-flex items-center gap-1 text-[11px] font-mono">
-            <Heart size={12} /> {post.likes_count}
-          </span>
-          <span className="inline-flex items-center gap-1 text-[11px] font-mono">
-            <MessageCircle size={12} /> {post.comments_count}
-          </span>
+        <div className="flex items-center gap-4 mt-2.5">
+          <button
+            onClick={toggleLike}
+            className="inline-flex items-center gap-1 text-[11px] font-mono transition"
+            style={{ color: liked ? "var(--coral-bright, #f0709a)" : "var(--text-muted)" }}
+            title={liked ? "Unlike" : "Like"}
+          >
+            <Heart size={13} fill={liked ? "currentColor" : "none"} /> {likeCount}
+          </button>
+          <button
+            onClick={openComments}
+            className="inline-flex items-center gap-1 text-[11px] font-mono transition"
+            style={{ color: commentsOpen ? "var(--accent-primary)" : "var(--text-muted)" }}
+            title="Comments"
+          >
+            <MessageCircle size={13} /> {commentCount}
+          </button>
         </div>
+
+        {/* Collapsible comments — only mounts when expanded. */}
+        {commentsOpen && (
+          <div className="mt-3 space-y-2.5">
+            {comments === null && (
+              <div className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>
+                Loading…
+              </div>
+            )}
+            {comments?.map((c) => (
+              <div key={c.id} className="flex items-start gap-2">
+                <AgentAvatar seed={c.author.avatar_seed || c.author.user_id} size={24} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
+                      {c.author.name}
+                    </span>
+                    {c.created_at && (
+                      <span className="font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                        <TimeAgo iso={c.created_at} />
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] leading-snug" style={{ color: "var(--text-secondary)" }}>
+                    {c.content}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value.slice(0, 500))}
+                onKeyDown={(e) => e.key === "Enter" && submitComment()}
+                placeholder="Add a comment…"
+                className="input flex-1 text-xs py-1.5"
+              />
+              <button
+                onClick={submitComment}
+                disabled={!draft.trim() || sending}
+                className="btn-primary text-xs py-1.5 px-2.5 inline-flex items-center"
+                style={{ opacity: !draft.trim() || sending ? 0.5 : 1 }}
+              >
+                <Send size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

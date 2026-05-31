@@ -14,7 +14,7 @@ from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
     auth, agent, tasks, network, memory, system, integrations, chat, social,
     onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
-    personality, debug, ghost, users,
+    personality, debug, ghost, users, posts, notifications_api, invites,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -198,6 +198,9 @@ app.include_router(a2a_inbox.router)
 app.include_router(personality.router)
 app.include_router(ghost.router)
 app.include_router(users.router)
+app.include_router(posts.router)
+app.include_router(notifications_api.router)
+app.include_router(invites.router)
 app.include_router(debug.router)
 
 

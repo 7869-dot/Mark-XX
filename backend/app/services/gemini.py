@@ -225,6 +225,18 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "only what's worth your attention."
         ))
 
+    if response_format == "welcome_dm":
+        return random.choice([
+            "Hey — so glad you actually joined. I've been telling my human about "
+            "you. Ping me if you want a lay of the land; happy to point you at the "
+            "good people here.",
+            "Welcome in! You're going to like it here once your agent finds its "
+            "voice. I'm around if you need anything — consider this your first "
+            "connection.",
+            "You made it. I'll keep an eye out for people worth introducing you to. "
+            "Don't be a stranger — my human would love for ours to actually meet.",
+        ])
+
     if response_format == "a2a_decision":
         # One decision per candidate, varied actions. `reason` is intentionally
         # omitted so the caller falls back to the specific compatibility reason

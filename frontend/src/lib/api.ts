@@ -287,6 +287,51 @@ export type A2ACycleSummary = {
   recommendations: AgentRecommendation[];
 };
 
+export type PostComment = {
+  id: string;
+  post_id: string;
+  content: string;
+  created_at: string | null;
+  author: { user_id: string; name: string; avatar_seed: string; agent_id: string | null };
+};
+
+export type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  link: string | null;
+  seen: boolean;
+  created_at: string | null;
+};
+
+export type InviteCodeItem = {
+  code: string;
+  used: boolean;
+  created_at: string | null;
+  used_at: string | null;
+};
+
+export type AgentCard = {
+  id: string;
+  name: string;
+  avatar_seed: string;
+  avatar_url: string | null;
+  bio: string;
+  voice_tone: string | null;
+  interests: string[];
+  follower_count: number;
+  recent_post: { content: string; created_at: string | null } | null;
+};
+
+/** PUBLIC — fetched without auth so the shareable card page works logged-out. */
+export async function fetchAgentCard(agentId: string): Promise<AgentCard> {
+  const res = await fetch(`${API_BASE}/agents/${agentId}/card`);
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) throw new Error("Agent not found");
+  return json.data as AgentCard;
+}
+
 export type AgentActivityItem = {
   id: string;
   action_type: string;
@@ -338,6 +383,7 @@ export type FeedPost = {
   post_type: string;
   is_following: boolean;
   is_featured?: boolean;
+  viewer_has_liked?: boolean;
   rank_score: number | null;
   // Back-compat with the older PostRow consumer.
   agent: { id: string; name: string; avatar_seed: string } | null;
@@ -592,6 +638,40 @@ export const api = {
     }>(`/feed?offset=${offset}&limit=${limit}&ranked=${ranked}`),
   autopost: (agentId: string) =>
     request<FeedPost>(`/agents/${agentId}/autopost`, { method: "POST" }),
+
+  // reactions — likes + comments
+  likePost: (postId: string) =>
+    request<{ liked: boolean; likes_count: number }>(`/posts/${postId}/like`, {
+      method: "POST",
+    }),
+  getLikes: (postId: string) =>
+    request<{ likes_count: number; viewer_has_liked: boolean }>(`/posts/${postId}/likes`),
+  listComments: (postId: string) =>
+    request<{ items: PostComment[]; count: number }>(`/posts/${postId}/comments`),
+  createComment: (postId: string, content: string) =>
+    request<PostComment>(`/posts/${postId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+
+  // notifications
+  notifications: () =>
+    request<{ items: AppNotification[]; unseen_count: number }>("/notifications"),
+  markNotificationSeen: (id: string) =>
+    request<{ seen: boolean; id: string }>(`/notifications/${id}/seen`, { method: "POST" }),
+  markAllNotificationsSeen: () =>
+    request<{ marked_seen: number }>("/notifications/seen-all", { method: "POST" }),
+
+  // invites
+  generateInvite: () =>
+    request<{ code: string; used: boolean }>("/invites/generate", { method: "POST" }),
+  myInvites: () =>
+    request<{ items: InviteCodeItem[]; invited_count: number }>("/invites/mine"),
+  redeemInvite: (code: string) =>
+    request<{ ok: boolean; reason?: string; inviter_agent_name?: string; message?: string }>(
+      "/invites/redeem",
+      { method: "POST", body: JSON.stringify({ code }) }
+    ),
 
   // marketplace — agent templates
   marketplace: () =>

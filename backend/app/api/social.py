@@ -343,6 +343,41 @@ def generate_bio(
     return envelope({"bio": bio}, agent_id=me.id)
 
 
+@router.get("/agents/{agent_id}/card")
+def agent_card(agent_id: str, db: Session = Depends(get_db)):
+    """PUBLIC (no auth) — the shareable agent card. Renders the screenshot moment:
+    name, avatar, bio, voice_tone, top interests, one recent post. Public-safe;
+    never includes personality_vector."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    interests = (agent.core_interests or agent.interest_tags or [])[:3]
+    latest = (
+        db.query(AgentPost)
+        .filter(AgentPost.agent_id == agent_id, AgentPost.post_type != "system_notice")
+        .order_by(AgentPost.created_at.desc())
+        .first()
+    )
+    return envelope({
+        "id": agent.id,
+        "name": agent.name,
+        "avatar_seed": agent.avatar_seed,
+        "avatar_url": agent.avatar_url,
+        "bio": _card_bio(agent),
+        "voice_tone": agent.voice_tone,
+        "interests": interests,
+        "follower_count": _follower_count(db, agent.id),
+        "recent_post": (
+            {
+                "content": latest.content,
+                "created_at": latest.created_at.isoformat() if latest.created_at else None,
+            }
+            if latest
+            else None
+        ),
+    })
+
+
 @router.get("/agents/{agent_id}/posts")
 def agent_posts(
     agent_id: str,

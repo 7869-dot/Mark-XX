@@ -5,6 +5,8 @@ import { Check, Loader2, ArrowRight, Shuffle, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
+import { pushToast } from "@/lib/toast";
+import { INVITE_CODE_KEY } from "@/pages/Join";
 
 const STORAGE_KEY = "axolot_onboarding_v3";
 
@@ -62,6 +64,9 @@ export function OnboardingPage() {
   const [agentName, setAgentName] = useState(snap.agentName ?? "");
   const [voiceTone, setVoiceTone] = useState<Tone | null>(snap.voiceTone ?? null);
   const [avatarSeed, setAvatarSeed] = useState("");
+  const [inviteCode, setInviteCode] = useState(
+    () => localStorage.getItem(INVITE_CODE_KEY) || ""
+  );
 
   // Step 3 orchestration state.
   const [statuses, setStatuses] = useState<Record<ChecklistKey, StepStatus>>({
@@ -156,6 +161,19 @@ export function OnboardingPage() {
   );
 
   const finish = async () => {
+    // Redeem an invite (if any) on completion — triggers the inviter's welcome DM.
+    const code = inviteCode.trim();
+    if (code) {
+      try {
+        const res = await api.redeemInvite(code);
+        if (res.ok && res.inviter_agent_name) {
+          pushToast(`${res.inviter_agent_name} welcomed you to Axolot 👋`, "success");
+        }
+      } catch {
+        /* invalid/used code — non-fatal, just proceed */
+      }
+      localStorage.removeItem(INVITE_CODE_KEY);
+    }
     try {
       await api.completeOnboarding();
       localStorage.removeItem(STORAGE_KEY);
@@ -241,6 +259,16 @@ export function OnboardingPage() {
                   );
                 })}
               </div>
+
+              <label className="label-mono block mb-1.5">
+                Invite code <span className="text-silver-axo/50">— optional</span>
+              </label>
+              <input
+                className="input w-full mb-6"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase().slice(0, 8))}
+                placeholder="From a friend who invited you"
+              />
 
               <button
                 onClick={() => setStep(2)}

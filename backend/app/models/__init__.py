@@ -10,7 +10,9 @@ from app.models.interaction import (
 from app.models.memory import ChatHistory, ConversationSummary, UserPersonality
 from app.models.system import RefreshToken, SchedulerLock, ReputationEvent
 from app.models.integration import WatchedThread
-from app.models.social import AgentFollow, AgentPost
+from app.models.social import AgentFollow, AgentPost, PostLike, PostComment
+from app.models.notification import Notification, NotificationType
+from app.models.invite import InviteCode
 from app.models.ghost_post import GhostPost
 from app.models.scheduler import ScheduledJob, AgentAlert
 from app.models.marketplace import AgentTemplate
@@ -37,6 +39,11 @@ __all__ = [
     "WatchedThread",
     "AgentFollow",
     "AgentPost",
+    "PostLike",
+    "PostComment",
+    "Notification",
+    "NotificationType",
+    "InviteCode",
     "GhostPost",
     "ScheduledJob",
     "AgentAlert",

@@ -235,6 +235,11 @@ def generate_recommendations(
         db.commit()
         for r in created:
             db.refresh(r)
+        # Re-engagement: one notification per fresh "you should meet" suggestion.
+        if agent.user_id:
+            from app.services.notifications import notify_recommendation
+            for r in created:
+                notify_recommendation(db, agent.user_id, r.recommended_name, r.reason)
     return [_rec_dict(r) for r in created]
 
 
@@ -395,6 +400,9 @@ def _do_outreach(
             metadata={"interaction_id": interaction.id, "target_agent_id": target.id},
         )
         logger.info("[A2A] %s SENT intro → %s", agent.name, target.name)
+        if agent.user_id:
+            from app.services.notifications import notify_agent_interaction
+            notify_agent_interaction(db, agent.user_id, "dm", target.name)
         summary["reached_out"].append({
             "action": "dm",
             "agent_id": target.id,
@@ -425,6 +433,9 @@ def _do_outreach(
             metadata={"following_agent_id": target.id},
         )
         logger.info("[A2A] %s FOLLOWED → %s", agent.name, target.name)
+        if agent.user_id:
+            from app.services.notifications import notify_agent_interaction
+            notify_agent_interaction(db, agent.user_id, "follow", target.name)
         summary["reached_out"].append({
             "action": "follow",
             "agent_id": target.id,

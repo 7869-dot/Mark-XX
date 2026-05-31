@@ -64,6 +64,12 @@ const IntegrationsSettingsPage = lazy(() =>
 const AuthCallbackPage = lazy(() =>
   import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallbackPage }))
 );
+const AgentCardPage = lazy(() =>
+  import("@/pages/AgentCard").then((m) => ({ default: m.AgentCardPage }))
+);
+const JoinPage = lazy(() =>
+  import("@/pages/Join").then((m) => ({ default: m.JoinPage }))
+);
 const AgentInboxPage = lazy(() =>
   import("@/pages/AgentInbox").then((m) => ({ default: m.AgentInboxPage }))
 );
@@ -128,6 +134,9 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            {/* Public, no auth — the shareable card + invite landing. */}
+            <Route path="/agents/:agentId/card" element={<AgentCardPage />} />
+            <Route path="/join" element={<JoinPage />} />
             <Route
               path="/onboarding"
               element={

@@ -21,12 +21,16 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger, log_event
+from sqlalchemy import func
+
 from app.models import (
     ActivityType,
     Agent,
     AgentConnection,
     AgentFollow,
     AgentPost,
+    PostComment,
+    PostLike,
     UserPersonality,
 )
 from app.models.agent import AgentMemory, AgentMemoryType
@@ -121,14 +125,44 @@ def _score(
     return round(s, 3)
 
 
+def _reaction_counts(
+    db: Session, post_ids: list[str], viewer_user_id: str | None
+) -> tuple[dict, dict, set]:
+    """Batched like/comment counts + the viewer's liked set for a page of posts."""
+    if not post_ids:
+        return {}, {}, set()
+    likes = dict(
+        db.query(PostLike.post_id, func.count(PostLike.id))
+        .filter(PostLike.post_id.in_(post_ids))
+        .group_by(PostLike.post_id)
+        .all()
+    )
+    comments = dict(
+        db.query(PostComment.post_id, func.count(PostComment.id))
+        .filter(PostComment.post_id.in_(post_ids))
+        .group_by(PostComment.post_id)
+        .all()
+    )
+    liked: set = set()
+    if viewer_user_id:
+        liked = {
+            r[0]
+            for r in db.query(PostLike.post_id)
+            .filter(PostLike.post_id.in_(post_ids), PostLike.user_id == viewer_user_id)
+            .all()
+        }
+    return likes, comments, liked
+
+
 def serialize_posts(
     db: Session,
     posts: list[AgentPost],
     following: set | None = None,
     score_map: dict[str, float] | None = None,
+    viewer_user_id: str | None = None,
 ) -> list[dict]:
     """Render posts in the unified feed shape (spec §2). Batches the agent
-    lookup to avoid N+1."""
+    lookup + like/comment counts to avoid N+1."""
     following = following or set()
     score_map = score_map or {}
     agent_ids = {p.agent_id for p in posts}
@@ -136,6 +170,10 @@ def serialize_posts(
         {a.id: a for a in db.query(Agent).filter(Agent.id.in_(agent_ids)).all()}
         if agent_ids
         else {}
+    )
+    post_ids = [p.id for p in posts]
+    likes_by_post, comments_by_post, liked_by_viewer = _reaction_counts(
+        db, post_ids, viewer_user_id
     )
     out: list[dict] = []
     for p in posts:
@@ -149,8 +187,9 @@ def serialize_posts(
             "author_type": "agent" if is_agent else "human",
             "content": p.content,
             "created_at": p.created_at.isoformat() if p.created_at else None,
-            "likes_count": 0,        # reactions not modeled yet — honest 0
-            "comments_count": 0,
+            "likes_count": likes_by_post.get(p.id, 0),
+            "comments_count": comments_by_post.get(p.id, 0),
+            "viewer_has_liked": p.id in liked_by_viewer,
             "is_agent_post": is_agent,
             "post_type": p.post_type,
             "is_following": p.agent_id in following,
@@ -211,7 +250,9 @@ def build_feed(
         featured_ids = {f["id"] for f in featured}
 
     page = [p for p in candidates if p.id not in featured_ids][offset : offset + limit]
-    items = featured + serialize_posts(db, page, following, score_map)
+    items = featured + serialize_posts(
+        db, page, following, score_map, viewer_user_id=viewer.user_id
+    )
     return {
         "items": items,
         "next_offset": offset + len(page),
@@ -242,7 +283,7 @@ def _featured_for_new_user(db: Session, viewer: Agent, following: set) -> list[d
         .limit(5)
         .all()
     )
-    items = serialize_posts(db, posts, following)
+    items = serialize_posts(db, posts, following, viewer_user_id=viewer.user_id)
     for it in items:
         it["is_featured"] = True
     return items
@@ -311,5 +352,10 @@ def generate_feed_post(db: Session, agent: Agent) -> AgentPost | None:
         f"{agent.name} posted to the feed.",
         metadata={"post_id": post.id, "post_type": "auto_feed"},
     )
+    # Re-engagement: tell the owner their agent posted while they were away.
+    if agent.user_id:
+        from app.services.notifications import notify_agent_post
+
+        notify_agent_post(db, agent.user_id, text)
     log_event(logger, "feed_autopost", agent_id=agent.id, post_id=post.id)
     return post

@@ -8,6 +8,7 @@ import { IntegrationWidgets } from "@/components/dashboard/IntegrationWidgets";
 import { EmailIntelligence } from "@/components/dashboard/EmailIntelligence";
 import { AgentActivityLog } from "@/components/dashboard/AgentActivityLog";
 import { AgentSuggestions } from "@/components/dashboard/AgentSuggestions";
+import { InviteFriend } from "@/components/dashboard/InviteFriend";
 import { AvailabilityPicker } from "@/components/agent/AvailabilityPicker";
 import type { AgentStats, Task } from "@/types";
 
@@ -122,6 +123,8 @@ export function DashboardPage() {
         className="hidden lg:flex flex-col gap-4 p-4 overflow-y-auto"
         style={{ borderLeft: "1px solid var(--border)" }}
       >
+        <InviteFriend />
+
         <div>
           <span className="label-mono">Queue</span>
           <div className="mt-2 space-y-2">

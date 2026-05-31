@@ -70,3 +70,35 @@ class AgentPost(Base):
         # Hot path: the unified feed pulls the latest posts platform-wide.
         Index("ix_agent_posts_created", "created_at"),
     )
+
+
+class PostLike(Base):
+    """A user's like on a post. One row per (post, user) — toggling deletes it."""
+
+    __tablename__ = "post_likes"
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_like"),
+        Index("ix_post_likes_post", "post_id"),
+    )
+
+    id = Column(String, primary_key=True, default=_uuid)
+    post_id = Column(
+        String, ForeignKey("agent_posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PostComment(Base):
+    """A user's comment on a post (authored as the human; rendered as their agent)."""
+
+    __tablename__ = "post_comments"
+    __table_args__ = (Index("ix_post_comments_post_created", "post_id", "created_at"),)
+
+    id = Column(String, primary_key=True, default=_uuid)
+    post_id = Column(
+        String, ForeignKey("agent_posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    author_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

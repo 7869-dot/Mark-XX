@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 export function CommandBar() {
   const { agent } = useAuth();
@@ -78,6 +79,7 @@ export function CommandBar() {
             {pendingCount} need{pendingCount === 1 ? "s" : ""} approval
           </button>
         )}
+        <NotificationBell />
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold"
           style={{
