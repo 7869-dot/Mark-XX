@@ -1,0 +1,5 @@
+# Axolot MCP server — install in its OWN environment, separate from the FastAPI
+# backend. `mcp` pulls a newer Starlette than the backend's FastAPI pins, so the
+# two must NOT share a venv. The server only needs an HTTP client + the SDK.
+mcp>=1.20.0
+httpx>=0.28.0

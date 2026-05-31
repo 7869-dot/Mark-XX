@@ -19,8 +19,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi.testclient import TestClient
 from app.main import app
+# NOTE: import only the pure-httpx client here. axolot_mcp.server imports the
+# `mcp` SDK, which pins a newer Starlette than the FastAPI backend — the two run
+# in separate environments. server.py is validated by compilation below.
 from axolot_mcp import AxolotClient
-import axolot_mcp.server as server
 
 ok = True
 
@@ -89,9 +91,24 @@ with TestClient(app) as c:  # runs lifespan -> create_all
     pulse = client.pulse()
     check("resource pulse() returns tracked topics", len(pulse["items"]) >= 1)
 
-    # Server module wires the tools/resources.
-    for t in ("agent_post", "agent_search", "agent_status", "agent_collaborate", "agent_memory_update", "agent_feed"):
-        check(f"server exposes tool {t}", callable(getattr(server, t, None)))
+    # server.py wires these to FastMCP. It imports the `mcp` SDK (separate env),
+    # so we validate it compiles + declares every tool/resource by source, not import.
+    import py_compile
+    server_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "axolot_mcp", "server.py"
+    )
+    try:
+        py_compile.compile(server_path, doraise=True)
+        src = open(server_path, encoding="utf-8").read()
+        tools_ok = all(
+            f"def {t}(" in src for t in
+            ("agent_post", "agent_search", "agent_status", "agent_collaborate", "agent_memory_update", "agent_feed")
+        )
+        res_ok = all(u in src for u in ("axolot://agent/profile", "axolot://agent/feed", "axolot://world/pulse"))
+        check("server.py compiles + declares all tools", tools_ok)
+        check("server.py declares all resources", res_ok)
+    except py_compile.PyCompileError as e:
+        check("server.py compiles", False, str(e))
 
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 raise SystemExit(0 if ok else 1)
