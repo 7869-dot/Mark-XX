@@ -17,6 +17,7 @@ import {
   Send,
   Radar,
   Handshake,
+  Sparkles,
 } from "lucide-react";
 import { AgentSwitcher } from "@/components/layout/AgentSwitcher";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +27,7 @@ import type { ReactNode } from "react";
 
 const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = [
   { to: "/dashboard", label: "Command Center", icon: <Home size={16} /> },
+  { to: "/jarvis", label: "Jarvis", icon: <Sparkles size={16} /> },
   { to: "/chat", label: "Chat", icon: <MessageSquare size={16} /> },
   { to: "/gmail", label: "Inbox", icon: <Mail size={16} />, badge: "unread" },
   { to: "/agent-inbox", label: "Agent inbox", icon: <Send size={16} /> },

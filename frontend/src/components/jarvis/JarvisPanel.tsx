@@ -112,7 +112,7 @@ export function JarvisPanel() {
           </motion.p>
           <div className="flex gap-2">
             <button
-              onClick={() => navigate(`/chat?q=${encodeURIComponent(ctx.question)}`)}
+              onClick={() => navigate(`/jarvis?q=${encodeURIComponent(ctx.question)}`)}
               className="btn-primary text-xs py-1.5 px-3"
             >
               Let's get into it

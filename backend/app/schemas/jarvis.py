@@ -1,4 +1,5 @@
-"""Jarvis wake-up contract — the shapes the home screen consumes."""
+"""Jarvis wake-up + chat contract — the shapes the home screen + chat consume."""
+import enum
 from datetime import datetime
 from typing import Literal
 
@@ -29,3 +30,31 @@ class AgentTaskResult(BaseModel):
     recipient_hint: str
     requires_approval: bool = True
     created_at: datetime
+
+
+# ── Chat command modes (Sprint 3A) ───────────────────────────────────────────
+class ChatMode(str, enum.Enum):
+    DEFAULT = "default"     # open Jarvis conversation
+    EMAIL = "email"         # routes to email agent
+    SCHEDULE = "schedule"   # routes to scheduler agent
+    RESEARCH = "research"   # web search + synthesis
+    POST = "post"           # draft for the posting agent to queue
+
+
+class JarvisAction(BaseModel):
+    type: Literal["draft_email", "schedule_event", "research_result", "post_draft"]
+    payload: dict
+    requires_approval: bool = True
+
+
+class JarvisChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+    mode: ChatMode = ChatMode.DEFAULT
+    context: dict | None = None
+
+
+class JarvisChatResponse(BaseModel):
+    reply: str
+    mode: ChatMode
+    action: JarvisAction | None = None
+    follow_up: str | None = None

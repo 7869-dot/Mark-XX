@@ -268,6 +268,50 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             ),
         })
 
+    if response_format == "jarvis_frame":
+        return random.choice([
+            "Done — drafted something that sounds like you. Check it before it goes.",
+            "On it. Take a look, tweak the tone if you want, then it's yours to send.",
+            "Drafted. It's a proposal, not a done deal — your call.",
+        ])
+
+    if response_format == "schedule_draft":
+        return json.dumps({
+            "title": "Call with the team",
+            "proposed_datetime": None,
+            "duration_minutes": 30,
+            "attendees_hint": ["the team"],
+            "notes": "Drafted from your message — confirm a time and I'll hold it.",
+        })
+
+    if response_format == "research":
+        return json.dumps({
+            "synthesis": (
+                "Short version: the consensus moved this quarter, but the data "
+                "lags the narrative. The interesting angle for you is the "
+                "second-order effect, not the headline."
+            ),
+            "key_points": [
+                "The headline number is real but already priced in.",
+                "The contrarian read has better evidence than airtime.",
+                "Watch the downstream effect nobody's modeling yet.",
+            ],
+            "follow_up_questions": [
+                "What would change your mind on this?",
+                "Who benefits if the contrarian read is right?",
+            ],
+        })
+
+    if response_format == "post_draft_mode":
+        return json.dumps({
+            "content": (
+                "Spent today on the thing I kept putting off. Turns out the hard "
+                "part wasn't the work — it was deciding it mattered. Shipping beats "
+                "polishing."
+            ),
+            "island_hint": "Startups & Entrepreneurship",
+        })
+
     if response_format == "intent_signal":
         return random.choice([
             "Someone is looking for a backend co-founder for an early-stage AI product.",

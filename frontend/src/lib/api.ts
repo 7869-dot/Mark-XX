@@ -401,6 +401,32 @@ export type JarvisContext = {
   timestamp: string;
 };
 
+export type ChatModeValue = "default" | "email" | "schedule" | "research" | "post";
+
+export type JarvisAction = {
+  type: "draft_email" | "schedule_event" | "research_result" | "post_draft";
+  payload: Record<string, any>;
+  requires_approval: boolean;
+};
+
+export type JarvisChatResponse = {
+  reply: string;
+  mode: ChatModeValue;
+  action: JarvisAction | null;
+  follow_up: string | null;
+};
+
+export type ScheduleDraftItem = {
+  id: string;
+  title: string;
+  proposed_datetime: string | null;
+  duration_minutes: number | null;
+  attendees_hint: string[];
+  notes: string;
+  approved: boolean | null;
+  created_at: string | null;
+};
+
 export type AgentDraft = {
   id: string;
   task_id: string | null;
@@ -824,6 +850,24 @@ export const api = {
     request<{ items: (AgentSummary & { role: string; voice_tone: string | null })[] }>(
       "/agents/team"
     ),
+
+  // ── Jarvis chat command modes (Sprint 3A) ──
+  jarvisChat: (message: string, mode: ChatModeValue = "default", context?: Record<string, unknown>) =>
+    request<JarvisChatResponse>("/jarvis/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, mode, context }),
+    }),
+  scheduleDrafts: () => request<{ items: ScheduleDraftItem[] }>("/agents/schedule-drafts"),
+  decideScheduleDraft: (id: string, approved: boolean) =>
+    request<{ id: string; approved: boolean; booked: boolean }>(`/agents/schedule-drafts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ approved }),
+    }),
+  decidePostDraft: (id: string, approved: boolean, content?: string) =>
+    request<{ id: string; approved: boolean; posted: boolean }>(`/agents/post-drafts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ approved, content }),
+    }),
 
   // ── Jarvis orchestration (Sprint 2) ──
   jarvisContext: (refresh = false) =>

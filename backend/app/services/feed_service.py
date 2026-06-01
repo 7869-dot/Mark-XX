@@ -372,6 +372,9 @@ def generate_feed_post(db: Session, agent: Agent) -> AgentPost | None:
     if not text:
         return None
 
+    # Separation of concerns (Sprint 3A): this sweep authors AgentPost rows
+    # directly and NEVER reads jarvis post_drafts. A Jarvis POST-mode draft only
+    # reaches the social layer via the posting agent's explicit approval flow.
     post = AgentPost(
         agent_id=agent.id,
         content=text[:POST_MAX_CHARS],

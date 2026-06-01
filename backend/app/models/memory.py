@@ -16,6 +16,10 @@ class ChatHistory(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     role = Column(String, nullable=False)  # user | agent
     content = Column(Text, nullable=False)
+    # Jarvis command mode this turn was in: default|email|schedule|research|post.
+    # NULL for legacy/plain chat. The summarizer ignores it (reads role/content),
+    # so Jarvis-mode turns feed ConversationSummary automatically.
+    mode = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

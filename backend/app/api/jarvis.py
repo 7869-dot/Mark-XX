@@ -10,10 +10,27 @@ from app.api.envelope import envelope
 from app.core.db import get_db
 from app.core.ratelimit import limiter
 from app.core.security import get_current_user
-from app.models import AgentTaskResult, User
-from app.services import jarvis_orchestrator
+from app.models import AgentTaskResult, ScheduleDraft, PostDraft, User
+from app.schemas.jarvis import JarvisChatRequest
+from app.services import jarvis_orchestrator, jarvis_router
 
 router = APIRouter(tags=["jarvis"])
+
+
+# ── Chat command modes (Sprint 3A) ───────────────────────────────────────────
+@router.post("/jarvis/chat")
+@limiter.limit("40/minute")
+def jarvis_chat(
+    request: Request,
+    body: JarvisChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Talk to Jarvis in one of five modes. Jarvis always replies in-character;
+    EMAIL/SCHEDULE/POST also return an approval-gated draft action, RESEARCH
+    returns an inline synthesis. The exchange is persisted to chat history."""
+    resp = jarvis_router.route_chat(db, user, body.message.strip(), body.mode, body.context)
+    return envelope(resp.model_dump(mode="json"))
 
 
 @router.get("/jarvis/context")
@@ -89,3 +106,94 @@ def decide_draft(
     db.commit()
     db.refresh(r)
     return envelope({"id": r.id, "approved": r.approved, "sent": False})
+
+
+# ── Schedule drafts (Sprint 3A) ──────────────────────────────────────────────
+def _schedule_dict(s: ScheduleDraft) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "proposed_datetime": s.proposed_datetime.isoformat() if s.proposed_datetime else None,
+        "duration_minutes": s.duration_minutes,
+        "attendees_hint": s.attendees_hint or [],
+        "notes": s.notes,
+        "approved": s.approved,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@router.get("/agents/schedule-drafts")
+def list_schedule_drafts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    rows = (
+        db.query(ScheduleDraft)
+        .filter(ScheduleDraft.user_id == user.id, ScheduleDraft.approved.is_(None))
+        .order_by(ScheduleDraft.created_at.desc())
+        .all()
+    )
+    return envelope({"items": [_schedule_dict(s) for s in rows]})
+
+
+@router.patch("/agents/schedule-drafts/{draft_id}")
+def decide_schedule_draft(
+    draft_id: str,
+    body: DraftDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Approve or reject a schedule draft. V1: NO calendar write — approving just
+    records the decision (real OAuth calendar write is Sprint 4)."""
+    s = (
+        db.query(ScheduleDraft)
+        .filter(ScheduleDraft.id == draft_id, ScheduleDraft.user_id == user.id)
+        .first()
+    )
+    if not s:
+        raise HTTPException(status_code=404, detail="schedule draft not found")
+    s.approved = bool(body.approved)
+    db.commit()
+    return envelope({"id": s.id, "approved": s.approved, "booked": False})
+
+
+# ── Post drafts (Sprint 3A) ──────────────────────────────────────────────────
+# NOTE: post_drafts is NOT the social feed. The feed_autopost / world_post
+# sweeps never read this table — a post reaches the social layer only after the
+# posting agent's approval flow (real publish wired in a later sprint).
+@router.get("/agents/post-drafts")
+def list_post_drafts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    rows = (
+        db.query(PostDraft)
+        .filter(PostDraft.user_id == user.id, PostDraft.approved.is_(None))
+        .order_by(PostDraft.created_at.desc())
+        .all()
+    )
+    return envelope({"items": [
+        {
+            "id": p.id, "content": p.content, "island_hint": p.island_hint,
+            "approved": p.approved,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in rows
+    ]})
+
+
+@router.patch("/agents/post-drafts/{draft_id}")
+def decide_post_draft(
+    draft_id: str,
+    body: DraftDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Approve or kill a post draft. V1: approving records the decision but does
+    NOT publish to the social layer — that stays behind the posting agent."""
+    p = (
+        db.query(PostDraft)
+        .filter(PostDraft.id == draft_id, PostDraft.user_id == user.id)
+        .first()
+    )
+    if not p:
+        raise HTTPException(status_code=404, detail="post draft not found")
+    if body.approved and body.content is not None:
+        p.content = body.content.strip()
+    p.approved = bool(body.approved)
+    db.commit()
+    return envelope({"id": p.id, "approved": p.approved, "posted": False})

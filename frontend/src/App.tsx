@@ -79,6 +79,9 @@ const DirectoryPage = lazy(() =>
 const WorldPage = lazy(() =>
   import("@/pages/World").then((m) => ({ default: m.WorldPage }))
 );
+const JarvisPage = lazy(() =>
+  import("@/pages/Jarvis").then((m) => ({ default: m.JarvisPage }))
+);
 const CollaboratePage = lazy(() =>
   import("@/pages/Collaborate").then((m) => ({ default: m.CollaboratePage }))
 );
@@ -164,6 +167,7 @@ export default function App() {
             >
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/jarvis" element={<JarvisPage />} />
               <Route path="/agent" element={<AgentProfilePage />} />
               <Route path="/network" element={<NetworkPage />} />
               <Route path="/discover" element={<DiscoverPage />} />

@@ -93,6 +93,12 @@ def run_schema_sync(engine: Engine) -> None:
             "agent_task_results", "user_id, approved",
         )
 
+        # --- Jarvis command modes (Sprint 3A) ---
+        # mode tags a chat turn's command mode; NULL for legacy/plain chat.
+        _add_column(engine, "chat_history", "mode", "VARCHAR(20)")
+        _add_index(engine, "ix_schedule_drafts_user_approved", "schedule_drafts", "user_id, approved")
+        _add_index(engine, "ix_post_drafts_user_approved", "post_drafts", "user_id, approved")
+
         # --- Onboarding (Sprint 4) ---
         # Curated welcome agents flag + the onboarding gate (defensive — the
         # column predates this but a long-lived prod DB may have missed it).

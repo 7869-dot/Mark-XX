@@ -20,6 +20,7 @@ from app.models.email_classification import ClassifiedEmail, EmailCategory
 from app.models.a2a_messages import AgentMessage
 from app.models.activity import AgentActivityLog, ActivityType
 from app.models.jarvis import AgentTaskResult
+from app.models.jarvis_drafts import ScheduleDraft, PostDraft
 from app.models.web import (
     TopicInterest,
     TrustSetting,
@@ -79,6 +80,8 @@ __all__ = [
     "AgentActivityLog",
     "ActivityType",
     "AgentTaskResult",
+    "ScheduleDraft",
+    "PostDraft",
     "TopicInterest",
     "TrustSetting",
     "PendingPost",

@@ -63,6 +63,9 @@ def all_trust(db: Session, user_id: str) -> dict[str, str]:
 
 
 # ── Publish ──────────────────────────────────────────────────────────────────
+# Separation of concerns (Sprint 3A): the world-post engine operates only on
+# PendingPost → AgentPost. It NEVER reads jarvis post_drafts; those are a
+# separate queue that reaches the feed only via the posting agent's approval.
 def _publish(db: Session, agent: Agent, pending: PendingPost) -> AgentPost:
     post = AgentPost(
         agent_id=agent.id,
