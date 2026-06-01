@@ -52,6 +52,28 @@ DEFAULT_PERSONALITY = {
 }
 
 
+class AgentRole(str, enum.Enum):
+    """The four-agent architecture (north-star). One team per user, coordinated
+    by Jarvis. Stored as a plain string column so roles can evolve freely.
+
+    - posting:  the public-facing agent — the ONLY one that posts to the social
+                layer (one per user, enforced). This is the historical primary
+                agent, so existing rows default to it and behavior is unchanged.
+    - jarvis:   the manager/orchestrator — the user's sharper subconscious.
+    - email:    inbox triage + calendar (signal vs noise).
+    - wildcard: user-defined purpose (research/health/learning/business/...).
+    """
+    posting = "posting"
+    jarvis = "jarvis"
+    email = "email"
+    wildcard = "wildcard"
+
+
+# The functional (non-posting) team members seeded alongside the posting agent.
+# These never post to the public feed and are hidden from /agents/mine.
+TEAM_ROLES = (AgentRole.jarvis, AgentRole.email, AgentRole.wildcard)
+
+
 class Agent(Base):
     __tablename__ = "agents"
     # Replaces the legacy UNIQUE(user_id) constraint — many agents may belong
@@ -119,6 +141,11 @@ class Agent(Base):
     core_interests = Column(JSON, default=list)
     # 0.5 = posts less than average, 1.5 = posts more. Scales the autopost odds.
     posting_frequency_bias = Column(Float, default=1.0)
+    # Four-agent architecture: which team role this agent fills. Defaults to
+    # "posting" so every existing (primary) agent keeps its exact behavior — it
+    # remains the one public-facing poster. Team agents (jarvis/email/wildcard)
+    # are is_primary=False and never post to the social layer.
+    role = Column(String, nullable=False, default=AgentRole.posting.value, index=True)
     # Optional hosted avatar; falls back to the deterministic SVG (avatar_seed).
     avatar_url = Column(String, nullable=True)
     # True for the curated welcome agents (Ada/Bram/Cara) seeded at startup —

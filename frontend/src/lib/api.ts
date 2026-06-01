@@ -793,6 +793,10 @@ export const api = {
 
   // multi-agent management
   myAgents: () => request<{ items: AgentSummary[] }>("/agents/mine"),
+  myTeam: () =>
+    request<{ items: (AgentSummary & { role: string; voice_tone: string | null })[] }>(
+      "/agents/team"
+    ),
   createAgent: (payload: {
     name: string;
     bio?: string;

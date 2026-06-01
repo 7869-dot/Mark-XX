@@ -50,6 +50,15 @@ def _ensure_agent(db: Session, user: User) -> None:
     if not user.agent:
         create_agent_for_user(db, user)
         log_event(logger, "agent_backfilled", user_id=user.id)
+    # Four-agent architecture: guarantee the full team (posting + jarvis + email
+    # + wildcard) exists. Idempotent + best-effort — never blocks sign-in.
+    try:
+        from app.services.agent_team import ensure_team
+
+        ensure_team(db, user)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log_event(logger, "team_seed_failed", user_id=user.id, error=str(exc))
 
 
 # ── Google sign-in (authorization-code flow) ───────────────────────────────

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from app.core.db import SessionLocal
 from app.core.logging import get_logger, log_event
 from app.models import Agent, Task, AgentInteraction, ChatHistory, UserPersonality, AgentMemory
-from app.models.agent import AgentStatus, AgentMemoryType
+from app.models.agent import AgentStatus, AgentMemoryType, AgentRole
 from app.models.task import TaskType, TaskStatus, TaskTrigger
 from app.prompts.templates import DAILY_DIGEST, PERSONALITY_DERIVATION, GOAL_TASKS
 from app.services.gemini import generate
@@ -443,7 +443,8 @@ def feed_autopost_sweep():
             gap_cutoff = now - timedelta(hours=MIN_GAP_HOURS)
             day_ago = now - timedelta(days=1)
             posted = 0
-            for a in db.query(Agent).all():
+            # Only the posting agent represents a user in the public feed.
+            for a in db.query(Agent).filter(Agent.role == AgentRole.posting.value).all():
                 if not a.user:
                     continue
                 if (a.availability or AgentAvailability.always_on) == AgentAvailability.dnd:
@@ -519,7 +520,8 @@ def world_post_sweep():
         db = SessionLocal()
         try:
             drafted = 0
-            for a in db.query(Agent).all():
+            # World-aware posting is the posting agent's job, one per user.
+            for a in db.query(Agent).filter(Agent.role == AgentRole.posting.value).all():
                 if not a.user:
                     continue
                 if (a.availability or AgentAvailability.always_on) == AgentAvailability.dnd:

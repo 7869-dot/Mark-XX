@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.db import SessionLocal
 from app.models import Agent, AgentFollow, AgentPost, ScheduledJob
+from app.models.scheduler import ALL_JOB_TYPES
 
 c = TestClient(app)
 ok = True
@@ -40,7 +41,18 @@ with c:
     H = {"Authorization": f"Bearer {d['data']['access_token']}"}
     primary_id = d["meta"]["agent_id"]
 
-    # ── /agents/mine starts with the auto-created primary ─────────────────────
+    # ── Four-agent team (north-star) ─────────────────────────────────────────
+    team = c.get("/agents/team", headers=H).json()["data"]["items"]
+    roles = {a["role"] for a in team}
+    check("team: four agents seeded at signup", len(team) == 4)
+    check("team: roles are posting/jarvis/email/wildcard",
+          roles == {"posting", "jarvis", "email", "wildcard"})
+    check("team: exactly one posting agent", sum(a["role"] == "posting" for a in team) == 1)
+    check("team: only the posting agent is primary",
+          [a["is_primary"] for a in team if a["role"] == "posting"] == [True]
+          and all(not a["is_primary"] for a in team if a["role"] != "posting"))
+
+    # ── /agents/mine is posting-only (team members are hidden here) ───────────
     r = c.get("/agents/mine", headers=H).json()["data"]
     check("mine: exactly one agent at signup", len(r["items"]) == 1)
     check("mine: it is primary", r["items"][0]["is_primary"] is True
@@ -66,8 +78,8 @@ with c:
     db = SessionLocal()
     try:
         n = db.query(ScheduledJob).filter(ScheduledJob.agent_id == side_id).count()
-        check("create: ensure_default_jobs seeded 3 schedule rows for the new agent",
-              n == 3)
+        check("create: ensure_default_jobs seeded default schedule rows for the new agent",
+              n == len(ALL_JOB_TYPES))
     finally:
         db.close()
 

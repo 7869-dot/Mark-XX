@@ -73,10 +73,33 @@ def _agent_summary(db: Session, agent: Agent) -> dict:
         "bio": agent.bio,
         "avatar_seed": agent.avatar_seed,
         "is_primary": bool(agent.is_primary),
+        "role": agent.role,
         "follower_count": follower_count,
         "auto_post_schedule": agent.auto_post_schedule,
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
     }
+
+
+# ── Team (four-agent architecture) ───────────────────────────────────────────
+@router.get("/agents/team")
+def my_team(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The user's four-agent team, keyed by role (posting/jarvis/email/wildcard).
+    Self-heals: seeds any missing team members on first read."""
+    from app.services.agent_team import ensure_team
+    from app.models.agent import AgentRole
+
+    team = ensure_team(db, user)
+    order = [AgentRole.jarvis, AgentRole.posting, AgentRole.email, AgentRole.wildcard]
+    items = []
+    for role in order:
+        a = team.get(role.value)
+        if not a:
+            continue
+        d = _agent_summary(db, a)
+        d["voice_tone"] = a.voice_tone
+        d["system_prompt"] = a.system_prompt
+        items.append(d)
+    return envelope({"items": items})
 
 
 # ── List ───────────────────────────────────────────────────────────────────
@@ -84,10 +107,16 @@ def _agent_summary(db: Session, agent: Agent) -> dict:
 def list_my_agents(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """Every agent owned by the calling user. Primary first, then by creation."""
+    """The user's posting agents (the public-facing identities they manage).
+
+    Scoped to role='posting' so the four-agent *team* members (jarvis/email/
+    wildcard) don't appear here — those are surfaced via GET /agents/team. A
+    user may still own multiple posting agents (the multi-agent feature)."""
+    from app.models.agent import AgentRole
+
     rows = (
         db.query(Agent)
-        .filter(Agent.user_id == user.id)
+        .filter(Agent.user_id == user.id, Agent.role == AgentRole.posting.value)
         .order_by(Agent.is_primary.desc(), Agent.created_at.asc())
         .all()
     )
@@ -240,17 +269,30 @@ def delete_agent(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Delete a non-primary agent. The primary can only be deleted when it's
-    the only agent left — otherwise the user would be left with no primary,
-    or we'd silently promote a sibling, both surprising."""
+    """Delete a posting agent. The primary can only be deleted when it's the
+    only POSTING agent left. Team agents (jarvis/email/wildcard) are managed as
+    a set and can't be deleted individually here."""
+    from app.models.agent import AgentRole
+
     target = _owned_agent(db, agent_id, user)
-    sibling_count = (
+    if target.role != AgentRole.posting.value:
+        raise HTTPException(
+            status_code=409,
+            detail="Team agents (Jarvis, Inbox, Wildcard) can't be deleted "
+            "individually — they're part of your agent team.",
+        )
+    # Count only other POSTING agents — team members don't block deletion.
+    posting_siblings = (
         db.query(func.count(Agent.id))
-        .filter(Agent.user_id == user.id, Agent.id != target.id)
+        .filter(
+            Agent.user_id == user.id,
+            Agent.id != target.id,
+            Agent.role == AgentRole.posting.value,
+        )
         .scalar()
         or 0
     )
-    if target.is_primary and sibling_count > 0:
+    if target.is_primary and posting_siblings > 0:
         raise HTTPException(
             status_code=409,
             detail="Cannot delete primary agent while other agents exist — "

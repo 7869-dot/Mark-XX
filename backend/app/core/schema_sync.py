@@ -82,6 +82,11 @@ def run_schema_sync(engine: Engine) -> None:
         _add_column(engine, "agents", "posting_frequency_bias", "FLOAT", default_sql="1.0")
         _add_column(engine, "agents", "avatar_url", "VARCHAR(512)")
 
+        # --- Four-agent architecture (north-star) ---
+        # Existing rows default to "posting" so the historical primary agent
+        # stays the one public-facing poster — zero behavior change on upgrade.
+        _add_column(engine, "agents", "role", "VARCHAR(16)", default_sql="'posting'")
+
         # --- Onboarding (Sprint 4) ---
         # Curated welcome agents flag + the onboarding gate (defensive — the
         # column predates this but a long-lived prod DB may have missed it).

@@ -1,5 +1,5 @@
 from app.models.user import User
-from app.models.agent import Agent, AgentMemory, AgentAvailability
+from app.models.agent import Agent, AgentMemory, AgentAvailability, AgentRole, TEAM_ROLES
 from app.models.task import Task
 from app.models.interaction import (
     AgentInteraction,
@@ -47,6 +47,8 @@ __all__ = [
     "Agent",
     "AgentMemory",
     "AgentAvailability",
+    "AgentRole",
+    "TEAM_ROLES",
     "Task",
     "AgentInteraction",
     "AgentConnection",

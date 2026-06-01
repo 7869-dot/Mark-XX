@@ -8,6 +8,7 @@ import { IntegrationWidgets } from "@/components/dashboard/IntegrationWidgets";
 import { EmailIntelligence } from "@/components/dashboard/EmailIntelligence";
 import { AgentActivityLog } from "@/components/dashboard/AgentActivityLog";
 import { AgentSuggestions } from "@/components/dashboard/AgentSuggestions";
+import { AgentTeam } from "@/components/dashboard/AgentTeam";
 import { InviteFriend } from "@/components/dashboard/InviteFriend";
 import { AvailabilityPicker } from "@/components/agent/AvailabilityPicker";
 import type { AgentStats, Task } from "@/types";
@@ -112,6 +113,7 @@ export function DashboardPage() {
             + Dispatch task
           </button>
         </div>
+        <AgentTeam />
         <AgentSuggestions />
         <IntegrationWidgets />
         <EmailIntelligence />
