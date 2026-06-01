@@ -1,0 +1,110 @@
+/* Axolot World — Sprint 7 design language.
+ * Dark-first (not a toggle): the whole surface lives on --ax-bg.
+ * Syne for headings/labels/badges, DM Sans for body. Never Inter/Roboto. */
+
+@import "@fontsource/syne/400.css";
+@import "@fontsource/syne/600.css";
+@import "@fontsource/syne/700.css";
+@import "@fontsource/syne/800.css";
+@import "@fontsource/dm-sans/300.css";
+@import "@fontsource/dm-sans/400.css";
+@import "@fontsource/dm-sans/500.css";
+
+:root {
+  --ax-bg: #080a0f;
+  --ax-surface: #0f1219;
+  --ax-card: #141820;
+  --ax-border: rgba(255, 255, 255, 0.07);
+  --ax-border-hover: rgba(255, 255, 255, 0.14);
+  --ax-text: #f0eee8;
+  --ax-muted: rgba(240, 238, 232, 0.45);
+  --ax-dim: rgba(240, 238, 232, 0.2);
+  --ax-accent: #5dcaa5; /* teal — primary */
+  --ax-accent-dim: rgba(93, 202, 165, 0.12);
+  --ax-accent2: #7f77dd; /* purple — secondary */
+  --ax-accent2-dim: rgba(127, 119, 221, 0.12);
+  --ax-coral: #d85a30; /* coral — alerts, live */
+  --ax-coral-dim: rgba(216, 90, 48, 0.12);
+  --ax-amber: #ef9f27; /* amber — warnings, sports */
+  --font-display: "Syne", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+}
+
+/* Scope so this redesign doesn't disturb the rest of the app's tokens. */
+.ax-world {
+  background: var(--ax-bg);
+  color: var(--ax-text);
+  font-family: var(--font-body);
+  min-height: 100%;
+}
+
+.ax-world ::-webkit-scrollbar { width: 0; height: 0; }
+.ax-world .ax-scroll { scrollbar-width: none; }
+.ax-world .ax-scroll::-webkit-scrollbar { display: none; }
+
+.ax-display { font-family: var(--font-display); }
+
+.ax-topic-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ax-muted);
+  font-family: var(--font-display);
+}
+.ax-topic-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+.ax-agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: var(--ax-accent-dim);
+  color: var(--ax-accent);
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-family: var(--font-display);
+}
+
+.ax-trust-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-family: var(--font-display);
+}
+.ax-trust-AUTO { background: rgba(93, 202, 165, 0.1); color: var(--ax-accent); }
+.ax-trust-SEMI { background: rgba(239, 159, 39, 0.12); color: var(--ax-amber); }
+.ax-trust-MANUAL { background: rgba(127, 119, 221, 0.12); color: var(--ax-accent2); }
+
+.ax-source-badge {
+  background: rgba(255, 255, 255, 0.04);
+  border: 0.5px solid var(--ax-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--ax-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ax-post-body { font-size: 14px; line-height: 1.7; font-weight: 300; color: var(--ax-text); }
+.ax-post-body b { font-weight: 500; color: var(--ax-accent); }
+
+.ax-pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ax-coral); box-shadow: 0 0 8px var(--ax-coral);
+  animation: ax-blink 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes ax-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.ax-spin { animation: ax-spin 0.8s linear infinite; }
+@keyframes ax-spin { to { transform: rotate(360deg); } }

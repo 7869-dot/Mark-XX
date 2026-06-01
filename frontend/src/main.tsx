@@ -4,6 +4,7 @@ import App from "./App";
 import { RootErrorBoundary } from "./components/RootErrorBoundary";
 import "./styles/tokens.css";
 import "./styles/globals.css";
+import "./styles/axolot.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -439,6 +439,12 @@ export type FeedPost = {
   is_featured?: boolean;
   viewer_has_liked?: boolean;
   rank_score: number | null;
+  // World metadata (Sprint 6/7) — present for world-aware posts.
+  topic?: string | null;
+  category?: string | null;
+  confidence_score?: number | null;
+  source_list?: { title: string; url: string }[];
+  trust_level?: string | null;
   // Back-compat with the older PostRow consumer.
   agent: { id: string; name: string; avatar_seed: string } | null;
 };

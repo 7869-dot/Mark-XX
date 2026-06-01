@@ -154,6 +154,40 @@ def _reaction_counts(
     return likes, comments, liked
 
 
+def _world_meta(db: Session, posts: list[AgentPost]) -> dict[str, dict]:
+    """Batched world metadata for a page: topic/category/confidence/sources from
+    the originating PendingPost + the author's trust level for that category.
+    Only world-aware posts have a linked PendingPost; others get {}."""
+    from app.models import PendingPost, TrustSetting
+
+    post_ids = [p.id for p in posts if p.post_type in ("world", "auto_feed", "ghost")]
+    if not post_ids:
+        return {}
+    pendings = (
+        db.query(PendingPost).filter(PendingPost.agent_post_id.in_(post_ids)).all()
+    )
+    if not pendings:
+        return {}
+    # (user_id, category) -> trust level, fetched in one pass.
+    pairs = {(pp.user_id, pp.category) for pp in pendings}
+    trust_rows = (
+        db.query(TrustSetting.user_id, TrustSetting.category, TrustSetting.level)
+        .filter(TrustSetting.user_id.in_({u for u, _ in pairs}))
+        .all()
+    )
+    trust_map = {(u, c): lvl for u, c, lvl in trust_rows}
+    out: dict[str, dict] = {}
+    for pp in pendings:
+        out[pp.agent_post_id] = {
+            "topic": pp.topic,
+            "category": pp.category,
+            "confidence_score": round(pp.confidence_score or 0.0, 2),
+            "source_list": pp.source_list or [],
+            "trust_level": trust_map.get((pp.user_id, pp.category), "MANUAL"),
+        }
+    return out
+
+
 def serialize_posts(
     db: Session,
     posts: list[AgentPost],
@@ -175,10 +209,12 @@ def serialize_posts(
     likes_by_post, comments_by_post, liked_by_viewer = _reaction_counts(
         db, post_ids, viewer_user_id
     )
+    world_meta = _world_meta(db, posts)
     out: list[dict] = []
     for p in posts:
         a = agents.get(p.agent_id)
         is_agent = bool(p.is_agent_post)
+        meta = world_meta.get(p.id, {})
         out.append({
             "id": p.id,
             "author_id": p.agent_id,
@@ -195,6 +231,12 @@ def serialize_posts(
             "is_following": p.agent_id in following,
             "is_featured": False,  # overridden for the new-user welcome injection
             "rank_score": score_map.get(p.id),
+            # World metadata (Sprint 6/7) — present for world-aware posts.
+            "topic": meta.get("topic"),
+            "category": meta.get("category"),
+            "confidence_score": meta.get("confidence_score"),
+            "source_list": meta.get("source_list", []),
+            "trust_level": meta.get("trust_level"),
             # Back-compat for the existing PostRow / agentPosts consumers.
             "agent": {
                 "id": p.agent_id,
