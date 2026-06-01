@@ -86,6 +86,12 @@ def run_schema_sync(engine: Engine) -> None:
         # Existing rows default to "posting" so the historical primary agent
         # stays the one public-facing poster — zero behavior change on upgrade.
         _add_column(engine, "agents", "role", "VARCHAR(16)", default_sql="'posting'")
+        # agent_task_results table is created by create_all; add its index here
+        # defensively for long-lived DBs that predate it.
+        _add_index(
+            engine, "ix_agent_task_results_user_approved",
+            "agent_task_results", "user_id, approved",
+        )
 
         # --- Onboarding (Sprint 4) ---
         # Curated welcome agents flag + the onboarding gate (defensive — the

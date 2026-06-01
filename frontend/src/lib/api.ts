@@ -386,6 +386,33 @@ export type PrivacyAuditItem = {
   created_at: string | null;
 };
 
+export type JarvisAgentTask = {
+  agent_role: "email" | "wildcard";
+  task_description: string;
+  priority: "now" | "today" | "this_week";
+  status: "pending" | "in_progress" | "done";
+};
+
+export type JarvisContext = {
+  greeting: string;
+  question: string;
+  known_about_user: string[];
+  team_briefing: JarvisAgentTask[];
+  timestamp: string;
+};
+
+export type AgentDraft = {
+  id: string;
+  task_id: string | null;
+  agent_role: string;
+  subject_line: string;
+  recipient_hint: string;
+  draft_content: string;
+  requires_approval: boolean;
+  approved: boolean | null;
+  created_at: string | null;
+};
+
 export type AgentActivityItem = {
   id: string;
   action_type: string;
@@ -797,6 +824,16 @@ export const api = {
     request<{ items: (AgentSummary & { role: string; voice_tone: string | null })[] }>(
       "/agents/team"
     ),
+
+  // ── Jarvis orchestration (Sprint 2) ──
+  jarvisContext: (refresh = false) =>
+    request<{ context: JarvisContext | null }>(`/jarvis/context?refresh=${refresh}`),
+  agentDrafts: () => request<{ items: AgentDraft[] }>("/agents/drafts"),
+  decideDraft: (id: string, approved: boolean, content?: string) =>
+    request<{ id: string; approved: boolean; sent: boolean }>(`/agents/drafts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ approved, content }),
+    }),
   createAgent: (payload: {
     name: string;
     bio?: string;

@@ -225,6 +225,49 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "only what's worth your attention."
         ))
 
+    if response_format == "jarvis_context":
+        return json.dumps({
+            "greeting": (
+                "Late login again — that's three this week. You do your sharpest "
+                "thinking now, so let's not waste it."
+            ),
+            "question": (
+                "The thing you've been circling for days — are you actually going "
+                "to start it tonight, or move it again?"
+            ),
+            "known_about_user": [
+                "Still hasn't touched the thing from last week.",
+                "Gets sharper after 10pm; mornings are a slow start.",
+                "Says yes to too much, then resents the calendar.",
+                "Cares more about momentum than polish.",
+            ],
+            "team_briefing": [
+                {
+                    "agent_role": "email",
+                    "task_description": "Draft a nudging follow-up to the thread that's gone quiet for 4 days. Casual, not apologetic.",
+                    "priority": "today",
+                    "status": "pending",
+                },
+                {
+                    "agent_role": "wildcard",
+                    "task_description": "Pull the three things worth knowing on the topic from last meeting. Synthesize, don't dump.",
+                    "priority": "this_week",
+                    "status": "pending",
+                },
+            ],
+        })
+
+    if response_format == "email_draft":
+        return json.dumps({
+            "subject_line": "Following up",
+            "recipient_hint": "the thread that went quiet",
+            "draft_content": (
+                "Hey — circling back on this before it slips. No pressure, but I'd "
+                "still love to get it moving while it's fresh. Free to jump on a "
+                "quick call this week if that's easier than typing it out?"
+            ),
+        })
+
     if response_format == "intent_signal":
         return random.choice([
             "Someone is looking for a backend co-founder for an early-stage AI product.",

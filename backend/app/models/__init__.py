@@ -19,6 +19,7 @@ from app.models.marketplace import AgentTemplate
 from app.models.email_classification import ClassifiedEmail, EmailCategory
 from app.models.a2a_messages import AgentMessage
 from app.models.activity import AgentActivityLog, ActivityType
+from app.models.jarvis import AgentTaskResult
 from app.models.web import (
     TopicInterest,
     TrustSetting,
@@ -77,6 +78,7 @@ __all__ = [
     "AgentMessage",
     "AgentActivityLog",
     "ActivityType",
+    "AgentTaskResult",
     "TopicInterest",
     "TrustSetting",
     "PendingPost",
