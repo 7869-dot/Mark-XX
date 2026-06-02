@@ -120,9 +120,9 @@ Return ONLY valid JSON (no preamble, no markdown) with exactly these keys:
 - "greeting": 1-2 sentences, SPECIFIC to them today (reference something real from the state). Never "Good morning", never "How can I help", never productivity metrics.
 - "question": ONE sharp question — something they've been avoiding or haven't addressed. Make it feel like it came from inside their own head.
 - "known_about_user": 3-5 short first-person internal notes (e.g. "Still hasn't resolved the pitch deck."). Observations, not announcements.
-- "team_briefing": a list of tasks you're assigning. Each: {{"agent_role": "email" | "wildcard", "task_description": "...", "priority": "now"|"today"|"this_week"}}. Be direct, like instructions to your team. Assign email tasks only when there's a real thread to act on.
+- "team_briefing": a list of tasks you're assigning. Each: {{"agent_role": "email" | "web", "task_description": "...", "priority": "now"|"today"|"this_week"}}. Be direct, like instructions to your team. Assign email tasks only when there's a real thread to act on; assign web tasks to scout opportunities tied to their goals.
 
-No "posting" tasks — the public voice stays user-driven."""
+No "feed" tasks — the public voice stays user-driven."""
 
 
 def _coerce_context(raw: str) -> JarvisContext:
@@ -130,8 +130,8 @@ def _coerce_context(raw: str) -> JarvisContext:
     tasks = []
     for t in (data.get("team_briefing") or []):
         role = str(t.get("agent_role", "")).lower()
-        if role not in ("email", "wildcard"):
-            continue  # Jarvis never assigns to posting; drop anything else.
+        if role not in ("email", "web"):
+            continue  # Jarvis never assigns to feed; drop anything else.
         try:
             tasks.append(AgentTask(
                 agent_role=role,
@@ -193,3 +193,139 @@ def wake_up(db: Session, user_id: str, *, force: bool = False) -> JarvisContext 
 
     log_event(logger, "jarvis_woke_up", user_id=user_id, tasks=len(ctx.team_briefing))
     return ctx
+
+
+# ── Session orchestration (Section 4) ────────────────────────────────────────
+def _first_name(user: User) -> str:
+    return (user.name or "there").split(" ")[0]
+
+
+def _synthesise(db: Session, jarvis: Agent | None, user: User, reports: dict) -> dict:
+    """Fold the three sub-agent reports into one briefing + 3 action items, in
+    the user's voice. Heavy/ultra tier; degrades to a deterministic summary."""
+    from app.services import user_profile as profiles
+
+    profile = profiles.get_profile(db, user.id)
+    jarvis_persona = profiles.build_jarvis_prompt(profile, _first_name(user))
+    instruction = (
+        jarvis_persona
+        + "\n\nIt's a new session. Your three sub-agents just reported. Synthesise "
+        "their reports into ONE briefing spoken to the user in their voice — lead "
+        "with what matters, skip the obvious, never dump raw data. Then propose "
+        "exactly 3 concrete action items.\n\n"
+        f"email_agent report: {json.dumps(reports.get('email', {}), default=str)}\n"
+        f"feed_agent report: {json.dumps(reports.get('feed', {}), default=str)}\n"
+        f"web_agent report: {json.dumps(reports.get('web', {}), default=str)}\n\n"
+        "Return ONLY valid JSON: {\"briefing\": \"<2-5 sentences>\", "
+        "\"action_items\": [\"<item>\", \"<item>\", \"<item>\"]}. No preamble."
+    )
+    briefing, action_items = "", []
+    if jarvis:
+        try:
+            from app.services.gemini import generate_for_agent
+
+            raw = generate_for_agent(db, jarvis, instruction, response_format="jarvis_session")
+            data = json.loads(raw)
+            briefing = str(data.get("briefing", "")).strip()
+            action_items = [str(a).strip() for a in (data.get("action_items") or []) if str(a).strip()][:3]
+        except Exception as exc:  # noqa: BLE001
+            log_event(logger, "jarvis_synthesis_failed", user_id=user.id, error=str(exc))
+
+    if not briefing:
+        # Deterministic fallback so the home screen always has a briefing.
+        em = reports.get("email", {})
+        web = reports.get("web", {})
+        bits = []
+        counts = em.get("counts", {})
+        if counts.get("urgent"):
+            bits.append(f"{counts['urgent']} urgent email(s) need you")
+        finds = web.get("top_finds", [])
+        if finds:
+            bits.append(f"{len(finds)} new opportunities I scouted")
+        if reports.get("feed", {}).get("drafted_post"):
+            bits.append("a feed post drafted and waiting")
+        briefing = (
+            "Here's where things stand: " + ", ".join(bits) + "."
+            if bits else "Quiet since last time — nothing urgent. What do you want to focus on today?"
+        )
+    if not action_items:
+        action_items = _fallback_actions(reports)
+    return {"briefing": briefing, "action_items": action_items}
+
+
+def _fallback_actions(reports: dict) -> list[str]:
+    items: list[str] = []
+    if reports.get("email", {}).get("action_required"):
+        items.append("Clear the emails that need action")
+    finds = reports.get("web", {}).get("top_finds", [])
+    if finds:
+        items.append(f"Look at the top opportunity: {finds[0]['title']}")
+    if reports.get("feed", {}).get("drafted_post"):
+        items.append("Review and approve the drafted feed post")
+    while len(items) < 3:
+        items.append("Tell me what to prioritise today")
+    return items[:3]
+
+
+def run_session(db: Session, user: User, *, force: bool = False) -> dict:
+    """Section 4 orchestration. On first session (no Jarvis onboarding) returns
+    an onboarding payload instead of running the sub-agents. Otherwise triggers
+    all three sub-agents, synthesises a briefing + 3 action items, and returns
+    everything the home screen needs. Never raises."""
+    from app.services import user_profile as profiles
+    from app.services.agent_team import ensure_team
+    from app.services import email_agent, feed_agent, web_agent
+    from app.services.agent_runs import last_runs
+
+    ensure_team(db, user)
+    profile = profiles.get_or_create_profile(db, user)
+    first = _first_name(user)
+
+    # First-interaction flow — onboard before acting as manager.
+    if not profile.onboarding_complete:
+        log_event(logger, "jarvis_session_onboarding", user_id=user.id)
+        return {
+            "onboarding": True,
+            "greeting": (
+                f"Hey {first} — good to finally meet you properly. Before I start "
+                "running things for you, I want to actually get you. Five quick questions."
+            ),
+            "questions": profiles.ONBOARDING_QUESTIONS,
+        }
+
+    jarvis = get_jarvis_agent(db, user.id)
+
+    reports: dict = {}
+    for name, fn in (("email", email_agent.run_report), ("feed", feed_agent.run_report),
+                     ("web", web_agent.run_report)):
+        try:
+            reports[name] = fn(db, user)
+        except Exception as exc:  # noqa: BLE001
+            log_event(logger, "jarvis_subagent_failed", user_id=user.id, agent=name, error=str(exc))
+            reports[name] = {"error": True}
+
+    synthesis = _synthesise(db, jarvis, user, reports)
+    status = _status_payload(last_runs(db, user.id))
+
+    log_event(logger, "jarvis_session_ran", user_id=user.id)
+    return {
+        "onboarding": False,
+        "greeting": f"Welcome back, {first}.",
+        "briefing": synthesis["briefing"],
+        "action_items": synthesis["action_items"],
+        "reports": reports,
+        "agent_status": status,
+        "focus_prompt": "What do you want to focus on today?",
+    }
+
+
+def _status_payload(runs: dict) -> list[dict]:
+    out = []
+    for name, row in runs.items():
+        out.append({
+            "agent_name": name,
+            "last_run": row.ran_at.isoformat() if row else None,
+            "last_summary": row.report_summary if row else None,
+            "status": row.status if row else "idle",
+        })
+    return out

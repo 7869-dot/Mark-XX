@@ -249,7 +249,7 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
                     "status": "pending",
                 },
                 {
-                    "agent_role": "wildcard",
+                    "agent_role": "web",
                     "task_description": "Pull the three things worth knowing on the topic from last meeting. Synthesize, don't dump.",
                     "priority": "this_week",
                     "status": "pending",
@@ -274,6 +274,22 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             "On it. Take a look, tweak the tone if you want, then it's yours to send.",
             "Drafted. It's a proposal, not a done deal — your call.",
         ])
+
+    if response_format == "jarvis_session":
+        return json.dumps({
+            "briefing": (
+                "Here's the state of play: your inbox has a couple of threads that "
+                "actually need you, I scouted a handful of opportunities worth a "
+                "look, and there's a feed post drafted in your voice waiting for a "
+                "yes. Nothing's on fire — so let's spend the morning on what moves "
+                "the needle."
+            ),
+            "action_items": [
+                "Clear the two emails that need a real reply",
+                "Skim the top opportunity I found and tell me if it's a fit",
+                "Approve or kill the drafted feed post",
+            ],
+        })
 
     if response_format == "schedule_draft":
         return json.dumps({

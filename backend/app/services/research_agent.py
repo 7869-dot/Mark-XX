@@ -18,7 +18,7 @@ logger = get_logger("axolot.research_agent")
 
 
 def _jarvis(db: Session, user_id: str) -> Agent | None:
-    for role in (AgentRole.jarvis, AgentRole.posting):
+    for role in (AgentRole.jarvis, AgentRole.feed):
         a = db.query(Agent).filter(
             Agent.user_id == user_id, Agent.role == role.value
         ).first()

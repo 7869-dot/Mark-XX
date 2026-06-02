@@ -29,6 +29,29 @@ class Settings(BaseSettings):
     #   LLM_MODEL:    model id passed to whichever provider is active
     LLM_PROVIDER: str = "gemini"
     LLM_MODEL: str = "gemini-3.1-flash-lite"
+
+    # ── Tiered models (Jarvis overhaul) ──────────────────────────────────────
+    # Routed per task by llm_gateway._model_for(): light tasks (email parsing,
+    # post generation, plain chat) -> LIGHT; relevance ranking / research /
+    # grounded synthesis -> HEAVY; Jarvis's multi-step orchestration briefing ->
+    # ULTRA. Never below Gemini 3.
+    #   LIGHT defaults to the verified working model (LLM_MODEL).
+    #   HEAVY/ULTRA default to gemini-3-pro and are env-overridable — set the
+    #   exact released IDs for your project (e.g. LLM_MODEL_ULTRA=gemini-3-ultra)
+    #   once confirmed. A bad/unknown id degrades gracefully to the stub via
+    #   gemini.generate, so a misconfigured tier never crashes a request.
+    LLM_MODEL_LIGHT: str = ""               # empty -> falls back to LLM_MODEL
+    LLM_MODEL_HEAVY: str = "gemini-3-pro"
+    LLM_MODEL_ULTRA: str = "gemini-3-pro"
+
+    def model_light(self) -> str:
+        return self.LLM_MODEL_LIGHT or self.LLM_MODEL
+
+    def model_heavy(self) -> str:
+        return self.LLM_MODEL_HEAVY or self.model_light()
+
+    def model_ultra(self) -> str:
+        return self.LLM_MODEL_ULTRA or self.model_heavy()
     # OpenAI-compatible endpoint for the "local" provider (vLLM/TGI on RunPod,
     # or the eventual fine-tuned Axolot model behind the same wire format).
     LLM_BASE_URL: str = ""          # e.g. https://<pod>.runpod.net/v1

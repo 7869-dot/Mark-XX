@@ -1,13 +1,13 @@
-"""The four-agent team (north-star architecture).
+"""Jarvis + three sub-agents (post-overhaul architecture).
 
-Every user has one *team*: the posting agent (public-facing, historical primary)
-plus three functional agents coordinated by Jarvis — jarvis (manager), email
-(inbox/calendar triage), and wildcard (user-defined). Team agents are
-is_primary=False, never post to the social layer, and are hidden from the
-multi-agent management list (/agents/mine), which stays posting-only.
+Every user has one *team*: the feed agent (public-facing, historical primary)
+plus three sub-agents coordinated by Jarvis — jarvis (manager), email
+(inbox/calendar triage), and web (web scout). Sub-agents are is_primary=False,
+never post to the social layer, and are hidden from the multi-agent management
+list (/agents/mine), which stays feed-only.
 
 Seeding is idempotent and lazy: ensure_team(user) is safe to call repeatedly and
-on existing accounts, so the migration to four agents needs no backfill job.
+on existing accounts, so the migration needs no backfill job.
 """
 from __future__ import annotations
 
@@ -21,17 +21,17 @@ from app.services.agent_service import create_agent_for_user, get_primary_agent
 logger = get_logger("axolot.team")
 
 # Role -> (name suffix, persona). Personas are distinct so each agent reasons in
-# its lane; wildcard is intentionally generic until the user configures it.
+# its lane. The user only ever talks to Jarvis; the sub-agents report to it.
 ROLE_SPEC: dict[AgentRole, dict] = {
     AgentRole.jarvis: {
         "suffix": "Jarvis",
         "voice_tone": "analytical",
         "system_prompt": (
             "You are Jarvis — the user's sharper subconscious and the manager of "
-            "their agent team. You think ahead, hold them accountable without "
-            "nagging, surface what they're avoiding, and coordinate the other "
-            "agents. You speak in the user's own voice, never like a generic "
-            "assistant. Context over small talk, always."
+            "their three sub-agents (email, feed, web). You think ahead, hold them "
+            "accountable without nagging, surface what they're avoiding, and "
+            "coordinate the sub-agents. You speak in the user's own voice, never "
+            "like a generic assistant. Context over small talk, always."
         ),
         "bias": 0.0,  # Jarvis never posts publicly
     },
@@ -47,13 +47,16 @@ ROLE_SPEC: dict[AgentRole, dict] = {
         ),
         "bias": 0.0,
     },
-    AgentRole.wildcard: {
-        "suffix": "Wildcard",
-        "voice_tone": "witty",
+    AgentRole.web: {
+        "suffix": "Scout",
+        "voice_tone": "analytical",
         "system_prompt": (
-            "You are the user's wildcard agent — a blank slate they configure for "
-            "their own purpose (research, health, learning, business...). Until "
-            "configured, you do helpful deep-dives and surface useful signal."
+            "You are the user's web scout — you continuously scan the web for "
+            "opportunities tailored to them: freelance gigs, jobs, learning "
+            "resources, certifications, news, investments, hackathons. You rank "
+            "by relevance to their goals and interests, learn from their feedback "
+            "(stop surfacing what they dismiss, go deeper on what they value), and "
+            "report only the highest-signal finds to Jarvis."
         ),
         "bias": 0.0,
     },
@@ -61,9 +64,9 @@ ROLE_SPEC: dict[AgentRole, dict] = {
 
 
 def get_team(db: Session, user_id: str) -> dict[str, Agent]:
-    """role -> Agent for the user's whole team (posting + functional)."""
+    """role -> Agent for the user's whole team (feed + sub-agents)."""
     rows = db.query(Agent).filter(Agent.user_id == user_id).all()
-    return {(a.role or AgentRole.posting.value): a for a in rows}
+    return {(a.role or AgentRole.feed.value): a for a in rows}
 
 
 def get_role(db: Session, user_id: str, role: AgentRole) -> Agent | None:
@@ -75,20 +78,20 @@ def get_role(db: Session, user_id: str, role: AgentRole) -> Agent | None:
 
 
 def ensure_team(db: Session, user: User) -> dict[str, Agent]:
-    """Idempotently guarantee the four-agent team exists for `user`.
+    """Idempotently guarantee Jarvis + the three sub-agents exist for `user`.
 
-    The existing primary agent becomes the posting agent (its role backfills to
-    'posting' via schema default). The three functional agents are created
-    non-primary, with NO scheduled_jobs — so the proactive sweeps that gate on
-    scheduled_jobs.enabled never touch them, and the public feed/world/collab
-    sweeps (which we scope to role='posting') skip them too.
+    The existing primary agent becomes the feed agent (its role backfills to
+    'feed'). The three sub-agents are created non-primary, with NO scheduled_jobs
+    — so the proactive sweeps that gate on scheduled_jobs.enabled never touch
+    them, and the public feed/world/collab sweeps (which we scope to role='feed')
+    skip them too.
     """
-    posting = get_primary_agent(db, user.id)
-    if not posting:
-        posting = create_agent_for_user(db, user)
+    feed = get_primary_agent(db, user.id)
+    if not feed:
+        feed = create_agent_for_user(db, user)
     # Backfill the primary's role (older rows created before this column).
-    if posting.role != AgentRole.posting.value:
-        posting.role = AgentRole.posting.value
+    if feed.role != AgentRole.feed.value:
+        feed.role = AgentRole.feed.value
         db.commit()
 
     first = (user.name or "User").split(" ")[0]
@@ -103,9 +106,9 @@ def ensure_team(db: Session, user: User) -> dict[str, Agent]:
             role=role.value,
             name=f"{first}'s {spec['suffix']}",
             personality_vector=dict(DEFAULT_PERSONALITY),
-            interest_tags=list(posting.interest_tags or []),
-            core_interests=list(posting.core_interests or []),
-            goals=list(posting.goals or []),
+            interest_tags=list(feed.interest_tags or []),
+            core_interests=list(feed.core_interests or []),
+            goals=list(feed.goals or []),
             voice_tone=spec["voice_tone"],
             system_prompt=spec["system_prompt"],
             posting_frequency_bias=spec["bias"],

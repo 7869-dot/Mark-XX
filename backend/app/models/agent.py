@@ -53,25 +53,33 @@ DEFAULT_PERSONALITY = {
 
 
 class AgentRole(str, enum.Enum):
-    """The four-agent architecture (north-star). One team per user, coordinated
+    """Jarvis + three sub-agents (post-overhaul). One team per user, coordinated
     by Jarvis. Stored as a plain string column so roles can evolve freely.
 
-    - posting:  the public-facing agent — the ONLY one that posts to the social
-                layer (one per user, enforced). This is the historical primary
-                agent, so existing rows default to it and behavior is unchanged.
-    - jarvis:   the manager/orchestrator — the user's sharper subconscious.
-    - email:    inbox triage + calendar (signal vs noise).
-    - wildcard: user-defined purpose (research/health/learning/business/...).
+    - jarvis: the manager/orchestrator — the user's sharper subconscious. The
+              ONLY surface the user talks to; it drives the three sub-agents.
+    - email:  inbox triage + calendar (signal vs noise), drafts replies.
+    - feed:   the public-facing World-feed agent — the ONLY one that posts to
+              the social layer (one per user). This is the historical primary
+              ("posting") agent; existing rows are migrated posting -> feed.
+    - web:    the web scout — scans for opportunities tailored to the user.
+              This is the historical "wildcard" agent; rows migrated wildcard -> web.
+
+    Legacy DB values "posting"/"wildcard" are converted to "feed"/"web" by the
+    one-time data migration in core.schema_sync.
     """
-    posting = "posting"
     jarvis = "jarvis"
     email = "email"
-    wildcard = "wildcard"
+    feed = "feed"
+    web = "web"
 
 
-# The functional (non-posting) team members seeded alongside the posting agent.
+# The functional (non-feed) team members seeded alongside the public feed agent.
 # These never post to the public feed and are hidden from /agents/mine.
-TEAM_ROLES = (AgentRole.jarvis, AgentRole.email, AgentRole.wildcard)
+TEAM_ROLES = (AgentRole.jarvis, AgentRole.email, AgentRole.web)
+
+# The public-facing role (the single poster). Renamed from "posting" -> "feed".
+PUBLIC_ROLE = AgentRole.feed
 
 
 class Agent(Base):
@@ -141,11 +149,11 @@ class Agent(Base):
     core_interests = Column(JSON, default=list)
     # 0.5 = posts less than average, 1.5 = posts more. Scales the autopost odds.
     posting_frequency_bias = Column(Float, default=1.0)
-    # Four-agent architecture: which team role this agent fills. Defaults to
-    # "posting" so every existing (primary) agent keeps its exact behavior — it
-    # remains the one public-facing poster. Team agents (jarvis/email/wildcard)
-    # are is_primary=False and never post to the social layer.
-    role = Column(String, nullable=False, default=AgentRole.posting.value, index=True)
+    # Jarvis + sub-agents: which team role this agent fills. Defaults to "feed"
+    # so every existing (primary) agent keeps its exact behavior — it remains
+    # the one public-facing poster. Sub-agents (jarvis/email/web) are
+    # is_primary=False and never post to the social layer.
+    role = Column(String, nullable=False, default=AgentRole.feed.value, index=True)
     # Optional hosted avatar; falls back to the deterministic SVG (avatar_seed).
     avatar_url = Column(String, nullable=True)
     # True for the curated welcome agents (Ada/Bram/Cara) seeded at startup —

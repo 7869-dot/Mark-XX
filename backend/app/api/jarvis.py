@@ -13,8 +13,116 @@ from app.core.security import get_current_user
 from app.models import AgentTaskResult, ScheduleDraft, PostDraft, User
 from app.schemas.jarvis import JarvisChatRequest
 from app.services import jarvis_orchestrator, jarvis_router
+from app.services import user_profile as profiles
+from app.services import email_agent, feed_agent, web_agent
+from app.services.agent_runs import last_runs
 
 router = APIRouter(tags=["jarvis"])
+
+
+# ── Session orchestration (Section 4 + 6) ─────────────────────────────────────
+@router.post("/jarvis/session/start")
+@limiter.limit("20/minute")
+def jarvis_session_start(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Start a Jarvis session: triggers the three sub-agents, synthesises a
+    briefing + 3 action items, and returns it. On first interaction (Jarvis not
+    yet onboarded) returns an onboarding payload (greeting + 5 questions) instead
+    of running the sub-agents."""
+    return envelope(jarvis_orchestrator.run_session(db, user))
+
+
+# ── Memory profile (Section 6) ────────────────────────────────────────────────
+@router.get("/jarvis/memory")
+def get_memory(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The user's Jarvis memory profile."""
+    profile = profiles.get_or_create_profile(db, user)
+    return envelope({"profile": profiles.profile_dict(profile)})
+
+
+class MemoryPatch(BaseModel):
+    # Onboarding answers (keyed by question id) — when present, runs the
+    # onboarding mapping and marks Jarvis onboarding complete.
+    answers: dict | None = None
+    # Or a direct field patch (interests/hates/goals/communication_style/
+    # opportunity_preferences/feedback_log/onboarding_complete).
+    interests: list | None = None
+    hates: list | None = None
+    goals: dict | None = None
+    communication_style: str | None = None
+    opportunity_preferences: list | None = None
+
+
+@router.patch("/jarvis/memory")
+def patch_memory(
+    body: MemoryPatch,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update the memory profile — from onboarding (body.answers) or a direct
+    field patch."""
+    if body.answers is not None:
+        profile = profiles.apply_onboarding(db, user, body.answers)
+    else:
+        patch = body.model_dump(exclude_none=True, exclude={"answers"})
+        profile = profiles.update_profile(db, user, patch)
+    return envelope({"profile": profiles.profile_dict(profile)})
+
+
+# ── Sub-agent on-demand runs + status + feedback (Section 6) ──────────────────
+@router.post("/agents/email/run")
+@limiter.limit("20/minute")
+def run_email_agent(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return envelope({"report": email_agent.run_report(db, user)})
+
+
+@router.post("/agents/feed/run")
+@limiter.limit("20/minute")
+def run_feed_agent(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return envelope({"report": feed_agent.run_report(db, user)})
+
+
+@router.post("/agents/web/run")
+@limiter.limit("20/minute")
+def run_web_agent(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return envelope({"report": web_agent.run_report(db, user)})
+
+
+@router.get("/agents/status")
+def agents_status(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Last run time + one-line summary + status for all three sub-agents."""
+    runs = last_runs(db, user.id)
+    items = [
+        {
+            "agent_name": name,
+            "last_run": (row.ran_at.isoformat() if row else None),
+            "last_summary": (row.report_summary if row else None),
+            "status": (row.status if row else "idle"),
+        }
+        for name, row in runs.items()
+    ]
+    return envelope({"agents": items})
+
+
+class WebFeedbackIn(BaseModel):
+    result_id: str
+    feedback: str  # "useful" | "not_useful"
+
+
+@router.post("/agents/web/feedback")
+def web_feedback(
+    body: WebFeedbackIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Thumbs up/down on a web-scout result — tunes future scans via feedback_log."""
+    ok = profiles.record_feedback(db, user, body.result_id, body.feedback)
+    if not ok:
+        raise HTTPException(status_code=400, detail="invalid result_id or feedback value")
+    return envelope({"recorded": True})
 
 
 # ── Chat command modes (Sprint 3A) ───────────────────────────────────────────

@@ -22,7 +22,7 @@ logger = get_logger("axolot.jarvis_router")
 
 
 def _jarvis_agent(db: Session, user_id: str) -> Agent | None:
-    for role in (AgentRole.jarvis, AgentRole.posting):
+    for role in (AgentRole.jarvis, AgentRole.feed):
         a = db.query(Agent).filter(Agent.user_id == user_id, Agent.role == role.value).first()
         if a:
             return a
@@ -31,7 +31,7 @@ def _jarvis_agent(db: Session, user_id: str) -> Agent | None:
 
 def _posting_agent(db: Session, user_id: str) -> Agent | None:
     return db.query(Agent).filter(
-        Agent.user_id == user_id, Agent.role == AgentRole.posting.value
+        Agent.user_id == user_id, Agent.role == AgentRole.feed.value
     ).first()
 
 

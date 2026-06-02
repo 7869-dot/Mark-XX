@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 
 
 class AgentTask(BaseModel):
-    # Jarvis never assigns to the posting agent (public voice stays user-driven).
-    agent_role: Literal["email", "wildcard"]
+    # Jarvis never assigns to the feed agent (public voice stays user-driven).
+    agent_role: Literal["email", "web"]
     task_description: str
     priority: Literal["now", "today", "this_week"] = "today"
     status: Literal["pending", "in_progress", "done"] = "pending"

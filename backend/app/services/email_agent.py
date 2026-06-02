@@ -13,9 +13,11 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger, log_event
-from app.models import Agent, AgentTaskResult, ClassifiedEmail
+from app.models import Agent, AgentTaskResult, ClassifiedEmail, User
 from app.models.agent import AgentRole
+from app.models.email_classification import EmailCategory
 from app.schemas.jarvis import AgentTask
+from app.services.agent_runs import EMAIL_AGENT, log_run
 
 logger = get_logger("axolot.email_agent")
 
@@ -95,3 +97,53 @@ def _new_task_id() -> str:
     import uuid
 
     return str(uuid.uuid4())
+
+
+def run_report(db: Session, user: User, *, limit: int = 40) -> dict:
+    """Summarise the user's inbox state by priority for Jarvis.
+
+    Reads persisted ClassifiedEmail verdicts (Gmail content stays in Gmail) and
+    buckets them: urgent_human -> urgent, agent_handleable -> important (carries
+    a pre-drafted reply + an action flag), informational -> low, spam dropped.
+    Returns a structured JSON summary. Never raises; logs an AgentRunLog row.
+    Leaves a TODO for live IMAP for non-Gmail inboxes.
+    """
+    rows = (
+        db.query(ClassifiedEmail)
+        .filter(ClassifiedEmail.user_id == user.id, ClassifiedEmail.dismissed.is_(False))
+        .order_by(ClassifiedEmail.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    urgent, important, low, action_required = [], [], [], []
+    for e in rows:
+        cat = e.category.value if hasattr(e.category, "value") else str(e.category)
+        item = {"subject": e.subject, "from": e.sender or e.sender_email}
+        if cat == EmailCategory.urgent_human.value:
+            urgent.append(item)
+            action_required.append(item)
+        elif cat == EmailCategory.agent_handleable.value:
+            item["suggested_reply"] = (e.drafted_reply or "")[:400]
+            important.append(item)
+            action_required.append(item)
+        elif cat == EmailCategory.informational.value:
+            low.append(item)
+        # spam is intentionally dropped from the briefing.
+
+    connected = bool(getattr(user, "gmail_connected", False))
+    summary_line = (
+        f"{len(urgent)} urgent, {len(important)} need action, {len(low)} low-priority."
+        if rows else
+        ("Inbox is clear." if connected else "Gmail not connected — no inbox to triage.")
+    )
+    log_run(db, user.id, EMAIL_AGENT, summary_line, status="ok")
+    log_event(logger, "email_report", user_id=user.id, urgent=len(urgent), important=len(important))
+    return {
+        "connected": connected,
+        "urgent": urgent,
+        "important": important,
+        "low": low,
+        "action_required": action_required,
+        "counts": {"urgent": len(urgent), "important": len(important), "low": len(low)},
+        # TODO: live IMAP fetch path for non-Gmail inboxes (Gmail OAuth done first).
+    }

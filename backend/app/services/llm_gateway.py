@@ -142,11 +142,43 @@ def _provider() -> LLMProvider:
     return cls()  # type: ignore[return-value]
 
 
+# Task types (gemini response_format / llm task labels) that need the heavy
+# reasoning tier: web-scout relevance ranking, research synthesis, and grounded
+# composition. Everything not listed here or in _ULTRA_TASKS uses the light tier.
+_HEAVY_TASKS = frozenset({
+    "research",
+    "grounded_post",
+    "web_relevance",        # web_agent: rank + summarise opportunities
+    "memory_mine",
+    "a2a_decision",
+    "goal_align",
+    "collab_proposal",
+})
+
+# Jarvis's multi-step orchestration — synthesising three sub-agent reports into
+# one briefing + action items, and the login wake-up. Highest tier.
+_ULTRA_TASKS = frozenset({
+    "jarvis_context",
+    "jarvis_session",
+    "jarvis_synthesis",
+    "briefing",
+})
+
+
 def _model_for(task_type: str) -> str:
-    """Resolve the model id for a task. Single model today; this is the hook
-    where Phase-4 per-cohort or per-task-type routing slots in (e.g. a cheap
-    model for `react`, the fine-tuned Axolot model for `post`)."""
-    return settings.LLM_MODEL
+    """Resolve the model id for a task by routing the task_type to a tier.
+
+    light  -> settings.model_light()  (email parsing, post generation, chat)
+    heavy  -> settings.model_heavy()  (relevance ranking, research, synthesis)
+    ultra  -> settings.model_ultra()  (Jarvis multi-step orchestration)
+
+    Never below Gemini 3 — see core.config tiered model settings.
+    """
+    if task_type in _ULTRA_TASKS:
+        return settings.model_ultra()
+    if task_type in _HEAVY_TASKS:
+        return settings.model_heavy()
+    return settings.model_light()
 
 
 # ── Public surface ───────────────────────────────────────────────────────────

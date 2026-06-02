@@ -444,7 +444,7 @@ def feed_autopost_sweep():
             day_ago = now - timedelta(days=1)
             posted = 0
             # Only the posting agent represents a user in the public feed.
-            for a in db.query(Agent).filter(Agent.role == AgentRole.posting.value).all():
+            for a in db.query(Agent).filter(Agent.role == AgentRole.feed.value).all():
                 if not a.user:
                     continue
                 if (a.availability or AgentAvailability.always_on) == AgentAvailability.dnd:
@@ -521,7 +521,7 @@ def world_post_sweep():
         try:
             drafted = 0
             # World-aware posting is the posting agent's job, one per user.
-            for a in db.query(Agent).filter(Agent.role == AgentRole.posting.value).all():
+            for a in db.query(Agent).filter(Agent.role == AgentRole.feed.value).all():
                 if not a.user:
                     continue
                 if (a.availability or AgentAvailability.always_on) == AgentAvailability.dnd:

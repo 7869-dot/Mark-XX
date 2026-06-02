@@ -45,6 +45,21 @@ def _add_column(engine: Engine, table: str, column: str, ddl_type: str, default_
     log_event(logger, "schema_added_column", table=table, column=column)
 
 
+def _rename_role_value(engine: Engine, old: str, new: str) -> None:
+    """Idempotently migrate agents.role from a legacy value to the new one.
+    No-op when the agents table or role column is absent, or nothing matches."""
+    if not _column_exists(engine, "agents", "role"):
+        return
+    with engine.begin() as conn:
+        res = conn.execute(
+            text("UPDATE agents SET role = :new WHERE role = :old"),
+            {"new": new, "old": old},
+        )
+    moved = getattr(res, "rowcount", 0) or 0
+    if moved:
+        log_event(logger, "schema_role_migrated", old=old, new=new, rows=moved)
+
+
 def _add_index(engine: Engine, name: str, table: str, cols: str, unique: bool = False) -> None:
     if _index_exists(engine, table, name):
         return
@@ -83,9 +98,16 @@ def run_schema_sync(engine: Engine) -> None:
         _add_column(engine, "agents", "avatar_url", "VARCHAR(512)")
 
         # --- Four-agent architecture (north-star) ---
-        # Existing rows default to "posting" so the historical primary agent
-        # stays the one public-facing poster — zero behavior change on upgrade.
-        _add_column(engine, "agents", "role", "VARCHAR(16)", default_sql="'posting'")
+        # Existing rows default to "feed" so the historical primary agent stays
+        # the one public-facing poster — zero behavior change on upgrade.
+        _add_column(engine, "agents", "role", "VARCHAR(16)", default_sql="'feed'")
+
+        # --- Jarvis overhaul: role rename posting->feed, wildcard->web ---
+        # One-time, idempotent data migration. The role *values* changed; this
+        # converts any rows still on the legacy values so the public feed/world
+        # sweeps (which filter role='feed') and the team lookups keep working.
+        _rename_role_value(engine, "posting", "feed")
+        _rename_role_value(engine, "wildcard", "web")
         # agent_task_results table is created by create_all; add its index here
         # defensively for long-lived DBs that predate it.
         _add_index(

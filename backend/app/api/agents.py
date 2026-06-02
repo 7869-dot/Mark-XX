@@ -83,13 +83,13 @@ def _agent_summary(db: Session, agent: Agent) -> dict:
 # ── Team (four-agent architecture) ───────────────────────────────────────────
 @router.get("/agents/team")
 def my_team(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """The user's four-agent team, keyed by role (posting/jarvis/email/wildcard).
+    """Jarvis + the three sub-agents, keyed by role (jarvis/feed/email/web).
     Self-heals: seeds any missing team members on first read."""
     from app.services.agent_team import ensure_team
     from app.models.agent import AgentRole
 
     team = ensure_team(db, user)
-    order = [AgentRole.jarvis, AgentRole.posting, AgentRole.email, AgentRole.wildcard]
+    order = [AgentRole.jarvis, AgentRole.feed, AgentRole.email, AgentRole.web]
     items = []
     for role in order:
         a = team.get(role.value)
@@ -107,16 +107,16 @@ def my_team(db: Session = Depends(get_db), user: User = Depends(get_current_user
 def list_my_agents(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """The user's posting agents (the public-facing identities they manage).
+    """The user's feed agents (the public-facing identities they manage).
 
-    Scoped to role='posting' so the four-agent *team* members (jarvis/email/
-    wildcard) don't appear here — those are surfaced via GET /agents/team. A
-    user may still own multiple posting agents (the multi-agent feature)."""
+    Scoped to role='feed' so the sub-agents (jarvis/email/web) don't appear
+    here — those are surfaced via GET /agents/team. A user may still own
+    multiple feed agents (the multi-agent feature)."""
     from app.models.agent import AgentRole
 
     rows = (
         db.query(Agent)
-        .filter(Agent.user_id == user.id, Agent.role == AgentRole.posting.value)
+        .filter(Agent.user_id == user.id, Agent.role == AgentRole.feed.value)
         .order_by(Agent.is_primary.desc(), Agent.created_at.asc())
         .all()
     )
@@ -269,25 +269,25 @@ def delete_agent(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Delete a posting agent. The primary can only be deleted when it's the
-    only POSTING agent left. Team agents (jarvis/email/wildcard) are managed as
-    a set and can't be deleted individually here."""
+    """Delete a feed agent. The primary can only be deleted when it's the
+    only FEED agent left. Sub-agents (jarvis/email/web) are managed as a set
+    and can't be deleted individually here."""
     from app.models.agent import AgentRole
 
     target = _owned_agent(db, agent_id, user)
-    if target.role != AgentRole.posting.value:
+    if target.role != AgentRole.feed.value:
         raise HTTPException(
             status_code=409,
-            detail="Team agents (Jarvis, Inbox, Wildcard) can't be deleted "
+            detail="Sub-agents (Jarvis, Inbox, Scout) can't be deleted "
             "individually — they're part of your agent team.",
         )
-    # Count only other POSTING agents — team members don't block deletion.
+    # Count only other FEED agents — sub-agents don't block deletion.
     posting_siblings = (
         db.query(func.count(Agent.id))
         .filter(
             Agent.user_id == user.id,
             Agent.id != target.id,
-            Agent.role == AgentRole.posting.value,
+            Agent.role == AgentRole.feed.value,
         )
         .scalar()
         or 0

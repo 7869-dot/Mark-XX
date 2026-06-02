@@ -19,9 +19,9 @@ logger = get_logger("axolot.scheduler_agent")
 
 
 def _scheduler_agent(db: Session, user_id: str) -> Agent | None:
-    """The wildcard agent stands in as the scheduler's voice (no dedicated role).
-    Falls back to Jarvis, then any agent — purely for voice consistency."""
-    for role in (AgentRole.wildcard, AgentRole.jarvis, AgentRole.posting):
+    """The web agent stands in as the scheduler's voice (no dedicated role).
+    Falls back to Jarvis, then the feed agent — purely for voice consistency."""
+    for role in (AgentRole.web, AgentRole.jarvis, AgentRole.feed):
         a = db.query(Agent).filter(
             Agent.user_id == user_id, Agent.role == role.value
         ).first()

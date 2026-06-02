@@ -42,7 +42,7 @@ with c:
         ).first()
         check("ensure_team ran at login — Jarvis agent exists", jarvis_agent is not None)
         posting_before = db.query(Agent).filter(
-            Agent.user_id == uid, Agent.role == AgentRole.posting.value
+            Agent.user_id == uid, Agent.role == AgentRole.feed.value
         ).first()
         posting_post_count_before = db.query(AgentPost).filter(
             AgentPost.agent_id == posting_before.id
@@ -56,8 +56,8 @@ with c:
     check("jarvis context generated", ctx is not None and bool(ctx["greeting"]))
     check("context has a sharp question", bool(ctx["question"]))
     check("known_about_user is 3-5 items", 3 <= len(ctx["known_about_user"]) <= 5, str(len(ctx["known_about_user"])))
-    check("team_briefing only assigns email/wildcard (never posting)",
-          all(t["agent_role"] in ("email", "wildcard") for t in ctx["team_briefing"]))
+    check("team_briefing only assigns email/web (never feed)",
+          all(t["agent_role"] in ("email", "web") for t in ctx["team_briefing"]))
     check("greeting avoids forbidden generic copy",
           "good morning" not in ctx["greeting"].lower() and "how can i help" not in ctx["greeting"].lower())
 
@@ -104,7 +104,7 @@ with c:
     db = SessionLocal()
     try:
         posting_after = db.query(Agent).filter(
-            Agent.user_id == uid, Agent.role == AgentRole.posting.value
+            Agent.user_id == uid, Agent.role == AgentRole.feed.value
         ).first()
         check("exactly one posting agent, still primary",
               posting_after.is_primary is True)
@@ -116,11 +116,74 @@ with c:
         # No draft was ever attributed to the posting agent.
         from app.models import AgentTaskResult
         posting_drafts = db.query(AgentTaskResult).filter(
-            AgentTaskResult.user_id == uid, AgentTaskResult.agent_role == "posting"
+            AgentTaskResult.user_id == uid, AgentTaskResult.agent_role == "feed"
         ).count()
-        check("no drafts attributed to posting agent", posting_drafts == 0)
+        check("no drafts attributed to feed agent", posting_drafts == 0)
     finally:
         db.close()
+
+    # ── 7. Session orchestration overhaul (Sections 2-4) ─────────────────────
+    H2, uid2 = auth("manager@axolot.dev", "Haani Doe")
+
+    # First session -> onboarding payload (not a briefing).
+    s = c.post("/jarvis/session/start", headers=H2).json()["data"]
+    check("first session triggers onboarding", s["onboarding"] is True)
+    check("onboarding has 5 questions", len(s["questions"]) == 5)
+    check("greeting uses first name", "Haani" in s["greeting"])
+    check("first 3 questions are option-select, last 2 free text",
+          all(q["type"] == "options" for q in s["questions"][:3])
+          and all(q["type"] == "text" for q in s["questions"][3:]))
+
+    m = c.get("/jarvis/memory", headers=H2).json()["data"]["profile"]
+    check("memory GET pre-onboarding", m["onboarding_complete"] is False)
+
+    prof = c.patch("/jarvis/memory", headers=H2, json={"answers": {
+        "working_on": "Building a startup or product",
+        "improve": "Technical / engineering skills",
+        "opportunities": ["Freelance", "Learning"],
+        "hates": "pointless status meetings",
+        "goal": "Ship the beta and land 3 design partners",
+    }}).json()["data"]["profile"]
+    check("onboarding marks complete", prof["onboarding_complete"] is True)
+    check("opportunity prefs mapped to scout categories",
+          "freelance" in prof["opportunity_preferences"] and "learning" in prof["opportunity_preferences"])
+    check("hates captured", "pointless status meetings" in prof["hates"])
+    check("goal stored", prof["goals"].get("this_month", "").startswith("Ship the beta"))
+
+    s2 = c.post("/jarvis/session/start", headers=H2).json()["data"]
+    check("second session is not onboarding", s2["onboarding"] is False)
+    check("briefing is non-empty", bool(s2["briefing"]))
+    check("exactly 3 action items", len(s2["action_items"]) == 3, str(len(s2["action_items"])))
+    check("reports has all 3 sub-agents", set(s2["reports"].keys()) == {"email", "feed", "web"})
+    check("agent_status lists 3 sub-agents", len(s2["agent_status"]) == 3)
+
+    # Web scout: on-demand run stores + reports finds.
+    w = c.post("/agents/web/run", headers=H2).json()["data"]["report"]
+    check("web report has top_finds", isinstance(w["top_finds"], list) and len(w["top_finds"]) > 0,
+          str(len(w.get("top_finds", []))))
+    find = w["top_finds"][0]
+    check("find has title+url+summary+category+score",
+          all(k in find for k in ("id", "title", "url", "summary", "category", "relevance_score")))
+
+    er = c.post("/agents/email/run", headers=H2).json()["data"]["report"]
+    check("email report has priority buckets",
+          all(k in er for k in ("urgent", "important", "low", "action_required")))
+    fr = c.post("/agents/feed/run", headers=H2).json()["data"]["report"]
+    check("feed report has engagement_candidates", "engagement_candidates" in fr)
+
+    st = c.get("/agents/status", headers=H2).json()["data"]["agents"]
+    check("status panel has the 3 sub-agents",
+          {a["agent_name"] for a in st} == {"email_agent", "feed_agent", "web_agent"})
+    check("status panel shows last_run after running", all(a["last_run"] for a in st))
+
+    fb = c.post("/agents/web/feedback", headers=H2,
+                json={"result_id": find["id"], "feedback": "useful"}).json()["data"]
+    check("web feedback recorded", fb["recorded"] is True)
+    m2 = c.get("/jarvis/memory", headers=H2).json()["data"]["profile"]
+    check("feedback_log updated", len(m2["feedback_log"]) >= 1)
+    bad_fb = c.post("/agents/web/feedback", headers=H2,
+                    json={"result_id": "nope", "feedback": "useful"})
+    check("feedback rejects unknown result_id (400)", bad_fb.status_code == 400, str(bad_fb.status_code))
 
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 raise SystemExit(0 if ok else 1)
