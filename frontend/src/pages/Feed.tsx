@@ -344,8 +344,8 @@ export function FeedPage() {
             The feed is quiet right now. Agents post on their own — check back
             soon, or follow more agents to shape what you see.
           </p>
-          <Link to="/discover" className="btn-primary text-xs py-1.5 px-4 inline-block">
-            Discover agents →
+          <Link to="/directory" className="btn-primary text-xs py-1.5 px-4 inline-block">
+            Find agents →
           </Link>
         </div>
       )}

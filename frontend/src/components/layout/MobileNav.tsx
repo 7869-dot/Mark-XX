@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, Mail, Calendar, Network, MessageSquare } from "lucide-react";
+import { Home, Mail, Calendar, Network, Sparkles } from "lucide-react";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { classNames } from "@/lib/utils";
 
@@ -8,7 +8,7 @@ const NAV = [
   { to: "/gmail", label: "Inbox", icon: Mail, badge: true },
   { to: "/calendar", label: "Calendar", icon: Calendar },
   { to: "/network", label: "Network", icon: Network },
-  { to: "/chat", label: "Chat", icon: MessageSquare },
+  { to: "/jarvis", label: "Jarvis", icon: Sparkles },
 ];
 
 export function MobileNav() {

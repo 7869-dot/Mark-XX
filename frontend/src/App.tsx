@@ -20,26 +20,17 @@ const OnboardingPage = lazy(() =>
 const DashboardPage = lazy(() =>
   import("@/pages/Dashboard").then((m) => ({ default: m.DashboardPage }))
 );
-const ChatPage = lazy(() =>
-  import("@/pages/Chat").then((m) => ({ default: m.ChatPage }))
-);
 const AgentProfilePage = lazy(() =>
   import("@/pages/AgentProfile").then((m) => ({ default: m.AgentProfilePage }))
 );
 const NetworkPage = lazy(() =>
   import("@/pages/Network").then((m) => ({ default: m.NetworkPage }))
 );
-const DiscoverPage = lazy(() =>
-  import("@/pages/Discover").then((m) => ({ default: m.DiscoverPage }))
-);
 const FeedPage = lazy(() =>
   import("@/pages/Feed").then((m) => ({ default: m.FeedPage }))
 );
 const SocialProfilePage = lazy(() =>
   import("@/pages/SocialProfile").then((m) => ({ default: m.SocialProfilePage }))
-);
-const MarketplacePage = lazy(() =>
-  import("@/pages/Marketplace").then((m) => ({ default: m.MarketplacePage }))
 );
 const AgentsPage = lazy(() =>
   import("@/pages/Agents").then((m) => ({ default: m.AgentsPage }))
@@ -166,16 +157,13 @@ export default function App() {
               }
             >
               <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/chat" element={<ChatPage />} />
               <Route path="/jarvis" element={<JarvisPage />} />
               <Route path="/agent" element={<AgentProfilePage />} />
               <Route path="/network" element={<NetworkPage />} />
-              <Route path="/discover" element={<DiscoverPage />} />
               <Route path="/feed" element={<FeedPage />} />
               <Route path="/world" element={<WorldPage />} />
               <Route path="/collab" element={<CollaboratePage />} />
               <Route path="/agents/:agentId" element={<SocialProfilePage />} />
-              <Route path="/marketplace" element={<MarketplacePage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/inbox" element={<InboxPage />} />

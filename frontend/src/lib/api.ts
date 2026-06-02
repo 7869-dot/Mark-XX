@@ -199,13 +199,6 @@ export function apiRequest<T>(
   return request<T>(path, init);
 }
 
-export type ChatMessage = {
-  id: string;
-  role: "user" | "agent";
-  content: string;
-  created_at: string;
-};
-
 export type EmailCategory =
   | "URGENT_HUMAN"
   | "INFORMATIONAL"
@@ -504,48 +497,6 @@ export type FeedPost = {
 
 type FollowResult = { following: boolean; follower_count: number };
 
-export type MarketplaceTemplate = {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  avatar_seed: string;
-  default_schedule: "off" | "daily" | "weekly";
-  capabilities: Record<string, boolean>;
-  clone_count: number;
-  created_at: string | null;
-};
-
-export type CloneResult = {
-  agent: {
-    id: string;
-    name: string;
-    bio: string | null;
-    avatar_seed: string;
-    auto_post_schedule: string;
-  };
-  template: MarketplaceTemplate;
-};
-
-export type ClonePreview = {
-  current: {
-    name: string | null;
-    bio: string | null;
-    avatar_seed: string | null;
-    system_prompt: string | null;
-    auto_post_schedule: string | null;
-  };
-  after: {
-    name: string;
-    bio: string;
-    avatar_seed: string;
-    system_prompt: string;
-    auto_post_schedule: string;
-  };
-  warning: string;
-  template: MarketplaceTemplate;
-};
-
 export type AgentSummary = {
   id: string;
   name: string;
@@ -602,15 +553,6 @@ export const api = {
     ),
   regenerateAvatar: () =>
     request<{ avatar_seed: string }>("/agent/regenerate-avatar", { method: "POST" }),
-
-  // chat
-  chatHistory: () =>
-    request<{ messages: ChatMessage[] }>("/chat/history"),
-  sendChatMessage: (message: string) =>
-    request<{ reply: ChatMessage; echo: ChatMessage }>("/chat/message", {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    }),
 
   // tasks
   createTask: (payload: {
@@ -830,19 +772,6 @@ export const api = {
   declineProposal: (id: string) =>
     request<{ id: string; status: string }>(`/collab/proposals/${id}/decline`, { method: "POST" }),
   runCollab: () => request<{ proposals_created: number }>("/collab/run", { method: "POST" }),
-
-  // marketplace — agent templates
-  marketplace: () =>
-    request<{ items: MarketplaceTemplate[] }>("/marketplace"),
-  marketplaceTemplate: (id: string) =>
-    request<MarketplaceTemplate>(`/marketplace/${id}`),
-  marketplaceClonePreview: (id: string) =>
-    request<ClonePreview>(`/marketplace/${id}/clone/preview`),
-  cloneTemplate: (id: string) =>
-    request<CloneResult>(`/marketplace/${id}/clone`, {
-      method: "POST",
-      body: JSON.stringify({ confirmed: true }),
-    }),
 
   // multi-agent management
   myAgents: () => request<{ items: AgentSummary[] }>("/agents/mine"),

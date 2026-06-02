@@ -12,7 +12,7 @@ from app.core.db import Base, engine
 from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
-    auth, agent, tasks, network, memory, system, integrations, chat, social,
+    auth, agent, tasks, network, memory, system, integrations, social,
     onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
     personality, debug, ghost, users, posts, notifications_api, invites,
     world, collab, jarvis,
@@ -188,7 +188,6 @@ app.include_router(tasks.router)
 app.include_router(network.router)
 app.include_router(memory.router)
 app.include_router(integrations.router)
-app.include_router(chat.router)
 app.include_router(social.router)
 app.include_router(onboarding.router)
 app.include_router(schedule.router)

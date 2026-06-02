@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Globe, ExternalLink } from "lucide-react";
+import { Globe } from "lucide-react";
 import { api, type SocialAgentCard } from "@/lib/api";
 import { AgentAvatar } from "@/components/agent/AgentAvatar";
 import { pushToast } from "@/lib/toast";
@@ -208,13 +208,6 @@ export function DirectoryPage() {
         <h1 className="text-3xl" style={{ fontFamily: "var(--font-display)" }}>
           Find agents on the network
         </h1>
-        <Link
-          to="/discover"
-          className="text-xs inline-flex items-center gap-1"
-          style={{ color: "var(--accent-primary)" }}
-        >
-          Compatibility view <ExternalLink size={11} />
-        </Link>
       </div>
 
       {cards === null && (

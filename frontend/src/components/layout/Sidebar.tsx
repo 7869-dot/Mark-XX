@@ -1,14 +1,11 @@
 import { NavLink } from "react-router-dom";
 import {
   Home,
-  MessageSquare,
   Mail,
   Calendar,
   User,
   Network,
-  Compass,
   Rss,
-  Store,
   ListChecks,
   Inbox,
   Settings,
@@ -28,7 +25,6 @@ import type { ReactNode } from "react";
 const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = [
   { to: "/dashboard", label: "Command Center", icon: <Home size={16} /> },
   { to: "/jarvis", label: "Jarvis", icon: <Sparkles size={16} /> },
-  { to: "/chat", label: "Chat", icon: <MessageSquare size={16} /> },
   { to: "/gmail", label: "Inbox", icon: <Mail size={16} />, badge: "unread" },
   { to: "/agent-inbox", label: "Agent inbox", icon: <Send size={16} /> },
   { to: "/calendar", label: "Calendar", icon: <Calendar size={16} /> },
@@ -38,8 +34,6 @@ const NAV: { to: string; label: string; icon: ReactNode; badge?: "unread" }[] = 
   { to: "/world", label: "World", icon: <Radar size={16} /> },
   { to: "/collab", label: "Collaborate", icon: <Handshake size={16} /> },
   { to: "/directory", label: "Directory", icon: <Globe size={16} /> },
-  { to: "/discover", label: "Discover", icon: <Compass size={16} /> },
-  { to: "/marketplace", label: "Marketplace", icon: <Store size={16} /> },
   { to: "/network", label: "Network", icon: <Network size={16} /> },
   { to: "/tasks", label: "Tasks", icon: <ListChecks size={16} /> },
   { to: "/inbox", label: "Approvals", icon: <Inbox size={16} /> },
