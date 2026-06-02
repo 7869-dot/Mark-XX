@@ -23,9 +23,17 @@ def is_stub() -> bool:
     return settings.USE_STUBS or not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET
 
 
-def _is_invalid_grant(exc: Exception) -> bool:
-    """True when a refresh failed because the refresh token is expired/revoked."""
-    return "invalid_grant" in str(exc).lower()
+def _reauth_reason(exc: Exception) -> str | None:
+    """Map a refresh failure to a disconnect reason that requires the user to
+    re-consent, or None for transient errors worth retrying. Covers both an
+    expired/revoked refresh token (invalid_grant) and a bad/again-required scope
+    grant (invalid_scope) — both mean the stored grant is unusable."""
+    s = str(exc).lower()
+    if "invalid_scope" in s:
+        return "invalid_scope"
+    if "invalid_grant" in s or "expired or revoked" in s:
+        return "token_expired"
+    return None
 
 
 def mark_disconnected(db: Session, user: User, reason: str = "token_expired") -> None:
@@ -162,10 +170,11 @@ def get_google_credentials(db: Session, user: User):
             log_event(logger, "google_token_refreshed", user_id=user.id)
         except Exception as exc:  # noqa: BLE001
             log_event(logger, "google_token_refresh_failed", user_id=user.id, error=str(exc))
-            # Expired/revoked refresh token — mark disconnected so the agent stops
-            # retrying and the UI can prompt a reconnect (Bug 3).
-            if _is_invalid_grant(exc):
-                mark_disconnected(db, user, "token_expired")
+            # invalid_grant (expired/revoked) OR invalid_scope (bad grant) — mark
+            # disconnected so the agent stops retrying and the UI prompts reconnect.
+            reason = _reauth_reason(exc)
+            if reason:
+                mark_disconnected(db, user, reason)
             return None
     return creds
 

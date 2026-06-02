@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     WEB_SEARCH_PROVIDER: str = "duckduckgo"   # duckduckgo (local, free) | tavily | serpapi
     TAVILY_API_KEY: str = ""
     SERPAPI_API_KEY: str = ""
-    WEB_FETCH_TIMEOUT_SECONDS: float = 8.0
+    WEB_FETCH_TIMEOUT_SECONDS: float = 12.0
 
     # ── Local headless browser (free search + scraping) ──────────────────────
     # Run Chromium headless on this machine — no paid API. Falls back to a plain

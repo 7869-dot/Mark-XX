@@ -31,7 +31,17 @@ logger = get_logger("axolot.local_browser")
 
 DDG_HTML = "https://html.duckduckgo.com/html/"
 DDG_LITE = "https://lite.duckduckgo.com/lite/"
+DDG_API = "https://api.duckduckgo.com/"
 _BLOCK_MARKERS = ("unusual traffic", "captcha", "are you a robot", "verify you are human")
+
+# Set True once we learn Chromium isn't installed (e.g. on Render where the
+# build didn't run `playwright install`). Lets local_search/scrape skip the
+# doomed Playwright launch instead of eating its startup cost on every query.
+_PLAYWRIGHT_MISSING = False
+
+
+def _is_browser_missing(msg: str) -> bool:
+    return "executable doesn't exist" in (msg or "").lower()
 
 
 # ── Threading guard ──────────────────────────────────────────────────────────
@@ -229,27 +239,75 @@ def _search_serpapi(query: str, max_results: int) -> list[dict]:
     return out[:max_results]
 
 
+# ── Search: DuckDuckGo Instant Answer JSON API (cloud-friendlier, free) ───────
+def _search_ddg_api(query: str, max_results: int) -> list[dict]:
+    """DuckDuckGo's Instant Answer JSON API on api.duckduckgo.com — a DIFFERENT
+    host than the lite/html scrape, and frequently reachable from datacenter IPs
+    where lite times out. Free, no key. Returns answer-style results with real
+    URLs (fewer than a full SERP, but real)."""
+    import httpx
+
+    resp = httpx.get(
+        DDG_API,
+        params={"q": query, "format": "json", "no_redirect": "1", "no_html": "1", "t": "axolot"},
+        headers=_headers(), timeout=settings.WEB_FETCH_TIMEOUT_SECONDS, follow_redirects=True,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    out: list[dict] = []
+    if data.get("AbstractURL"):
+        out.append({
+            "title": data.get("Heading") or query,
+            "url": data["AbstractURL"],
+            "snippet": (data.get("AbstractText") or "")[:300],
+        })
+
+    def _walk(topics: list) -> None:
+        for t in topics:
+            if len(out) >= max_results:
+                return
+            if isinstance(t, dict) and t.get("Topics"):
+                _walk(t["Topics"])
+            elif isinstance(t, dict) and t.get("FirstURL"):
+                text = (t.get("Text") or "").strip()
+                out.append({"title": text[:80] or t["FirstURL"], "url": t["FirstURL"], "snippet": text[:300]})
+
+    _walk(data.get("RelatedTopics") or [])
+    return out[:max_results]
+
+
 def local_search(query: str, max_results: int = 5) -> list[dict]:
     """Free web search. Returns [{title,url,snippet}]. Tries, in order:
-    Playwright (headless Chromium) -> httpx DuckDuckGo Lite -> SerpAPI (only if
-    SERPAPI_KEY is set) -> []. Never raises."""
+    Playwright (headless Chromium, skipped when Chromium is known-missing) ->
+    httpx DuckDuckGo Lite -> DuckDuckGo Instant-Answer JSON API -> SerpAPI (only
+    if SERPAPI_KEY is set) -> []. Never raises."""
+    global _PLAYWRIGHT_MISSING
     query = (query or "").strip()
     if not query:
         return []
-    for name, fn in (
-        ("playwright", _search_playwright),
-        ("httpx", _search_httpx),
-        ("serpapi", _search_serpapi),
-    ):
-        if name == "serpapi" and not _serpapi_key():
-            continue  # skip silently when no key
+
+    engines: list[tuple] = []
+    if not _PLAYWRIGHT_MISSING:
+        engines.append(("playwright", _search_playwright))
+    engines.append(("httpx_lite", _search_httpx))
+    engines.append(("ddg_api", _search_ddg_api))
+    if _serpapi_key():
+        engines.append(("serpapi", _search_serpapi))
+
+    for name, fn in engines:
         try:
             results = fn(query, max_results)
             if results:
                 log_event(logger, "local_search_ok", engine=name, query_chars=len(query), results=len(results))
                 return results
         except Exception as exc:  # noqa: BLE001
-            log_event(logger, "local_search_failed", engine=name, error=str(exc)[:160])
+            msg = str(exc)
+            if name == "playwright" and _is_browser_missing(msg):
+                _PLAYWRIGHT_MISSING = True  # stop trying a browser that isn't installed
+                log_event(logger, "playwright_disabled", reason="chromium_not_installed")
+            log_event(logger, "local_search_failed", engine=name, error=msg[:160])
+    log_event(logger, "local_search_empty", query_chars=len(query),
+              serpapi=bool(_serpapi_key()), playwright=not _PLAYWRIGHT_MISSING)
     return []
 
 
@@ -292,22 +350,35 @@ def scrape_url(url: str) -> dict:
     """Visit `url` headlessly and return {url, title, text, markdown} with
     scripts/CSS/nav stripped. Tries Playwright, then httpx+BS4. Never raises —
     returns an empty-text dict on total failure."""
+    global _PLAYWRIGHT_MISSING
     url = (url or "").strip()
     if not url.startswith("http"):
         return {"url": url, "title": "", "text": "", "markdown": "", "error": "invalid_url"}
-    for name, fn in (("playwright", _scrape_playwright), ("httpx", _scrape_httpx)):
+    engines: list[tuple] = []
+    if not _PLAYWRIGHT_MISSING:
+        engines.append(("playwright", _scrape_playwright))
+    engines.append(("httpx", _scrape_httpx))
+    for name, fn in engines:
         try:
             data = fn(url)
             if data.get("text"):
                 log_event(logger, "scrape_ok", engine=name, url=url[:120], chars=len(data["text"]))
                 return {"url": url, **data}
         except Exception as exc:  # noqa: BLE001
-            log_event(logger, "scrape_failed", engine=name, url=url[:120], error=str(exc)[:160])
+            msg = str(exc)
+            if name == "playwright" and _is_browser_missing(msg):
+                _PLAYWRIGHT_MISSING = True
+                log_event(logger, "playwright_disabled", reason="chromium_not_installed")
+            log_event(logger, "scrape_failed", engine=name, url=url[:120], error=msg[:160])
     return {"url": url, "title": "", "text": "", "markdown": "", "error": "unreachable"}
 
 
 def browser_available() -> bool:
-    """True when Playwright + a Chromium build are installed (for diagnostics)."""
+    """True when Playwright + a Chromium build are installed. Also primes the
+    _PLAYWRIGHT_MISSING flag so the startup probe (called in the lifespan) makes
+    later searches skip the doomed browser launch entirely."""
+    global _PLAYWRIGHT_MISSING
+    ok = False
     try:
         from playwright.sync_api import sync_playwright
 
@@ -317,6 +388,8 @@ def browser_available() -> bool:
                 b.close()
             return True
 
-        return bool(_run_blocking(_probe))
+        ok = bool(_run_blocking(_probe))
     except Exception:  # noqa: BLE001
-        return False
+        ok = False
+    _PLAYWRIGHT_MISSING = not ok
+    return ok
