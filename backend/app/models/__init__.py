@@ -33,6 +33,15 @@ from app.models.web import (
     TOPIC_CATEGORIES,
     SENSITIVE_CATEGORIES,
 )
+from app.models.jarvis_profile import (
+    UserProfile,
+    WebScoutResult,
+    AgentRunLog,
+    WEB_CATEGORIES,
+    FEEDBACK_USEFUL,
+    FEEDBACK_NOT_USEFUL,
+    FEEDBACK_VALUES,
+)
 from app.models.collab import (
     CollaborationSession,
     CollaborationProposal,
@@ -82,6 +91,13 @@ __all__ = [
     "AgentTaskResult",
     "ScheduleDraft",
     "PostDraft",
+    "UserProfile",
+    "WebScoutResult",
+    "AgentRunLog",
+    "WEB_CATEGORIES",
+    "FEEDBACK_USEFUL",
+    "FEEDBACK_NOT_USEFUL",
+    "FEEDBACK_VALUES",
     "TopicInterest",
     "TrustSetting",
     "PendingPost",
