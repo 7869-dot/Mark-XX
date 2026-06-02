@@ -126,7 +126,9 @@ No "feed" tasks — the public voice stays user-driven."""
 
 
 def _coerce_context(raw: str) -> JarvisContext:
-    data = json.loads(raw)
+    from app.services.gemini import extract_json
+
+    data = extract_json(raw)  # tolerant of ```json fences from pro-tier models
     tasks = []
     for t in (data.get("team_briefing") or []):
         role = str(t.get("agent_role", "")).lower()
@@ -202,8 +204,19 @@ def _first_name(user: User) -> str:
 
 def _synthesise(db: Session, jarvis: Agent | None, user: User, reports: dict) -> dict:
     """Fold the three sub-agent reports into one briefing + 3 action items, in
-    the user's voice. Heavy/ultra tier; degrades to a deterministic summary."""
+    the user's voice (ultra tier).
+
+    Bug 3: the model (pro) often wraps JSON in ```json fences — we parse via
+    gemini.extract_json, which strips fences and grabs the JSON block. On a
+    genuine failure we surface an HONEST error briefing (no fabricated summary,
+    no canned action items) — the raw response is logged at DEBUG by extract_json.
+    """
     from app.services import user_profile as profiles
+    from app.services import gemini
+
+    if not jarvis:
+        log_event(logger, "jarvis_synthesis_failed", user_id=user.id, error="no_jarvis_agent")
+        return {"briefing": gemini.LLM_UNAVAILABLE, "action_items": [], "error": "no_jarvis_agent"}
 
     profile = profiles.get_profile(db, user.id)
     jarvis_persona = profiles.build_jarvis_prompt(profile, _first_name(user))
@@ -217,54 +230,28 @@ def _synthesise(db: Session, jarvis: Agent | None, user: User, reports: dict) ->
         f"feed_agent report: {json.dumps(reports.get('feed', {}), default=str)}\n"
         f"web_agent report: {json.dumps(reports.get('web', {}), default=str)}\n\n"
         "Return ONLY valid JSON: {\"briefing\": \"<2-5 sentences>\", "
-        "\"action_items\": [\"<item>\", \"<item>\", \"<item>\"]}. No preamble."
+        "\"action_items\": [\"<item>\", \"<item>\", \"<item>\"]}. No preamble, no markdown fences."
     )
-    briefing, action_items = "", []
-    if jarvis:
-        try:
-            from app.services.gemini import generate_for_agent
-
-            raw = generate_for_agent(db, jarvis, instruction, response_format="jarvis_session")
-            data = json.loads(raw)
-            briefing = str(data.get("briefing", "")).strip()
-            action_items = [str(a).strip() for a in (data.get("action_items") or []) if str(a).strip()][:3]
-        except Exception as exc:  # noqa: BLE001
-            log_event(logger, "jarvis_synthesis_failed", user_id=user.id, error=str(exc))
-
-    if not briefing:
-        # Deterministic fallback so the home screen always has a briefing.
-        em = reports.get("email", {})
-        web = reports.get("web", {})
-        bits = []
-        counts = em.get("counts", {})
-        if counts.get("urgent"):
-            bits.append(f"{counts['urgent']} urgent email(s) need you")
-        finds = web.get("top_finds", [])
-        if finds:
-            bits.append(f"{len(finds)} new opportunities I scouted")
-        if reports.get("feed", {}).get("drafted_post"):
-            bits.append("a feed post drafted and waiting")
-        briefing = (
-            "Here's where things stand: " + ", ".join(bits) + "."
-            if bits else "Quiet since last time — nothing urgent. What do you want to focus on today?"
-        )
-    if not action_items:
-        action_items = _fallback_actions(reports)
-    return {"briefing": briefing, "action_items": action_items}
-
-
-def _fallback_actions(reports: dict) -> list[str]:
-    items: list[str] = []
-    if reports.get("email", {}).get("action_required"):
-        items.append("Clear the emails that need action")
-    finds = reports.get("web", {}).get("top_finds", [])
-    if finds:
-        items.append(f"Look at the top opportunity: {finds[0]['title']}")
-    if reports.get("feed", {}).get("drafted_post"):
-        items.append("Review and approve the drafted feed post")
-    while len(items) < 3:
-        items.append("Tell me what to prioritise today")
-    return items[:3]
+    try:
+        raw = gemini.generate_for_agent(db, jarvis, instruction, response_format="jarvis_session")
+        data = gemini.extract_json(raw)  # strips ```json fences; raises on bad JSON
+        briefing = str(data.get("briefing", "")).strip()
+        action_items = [str(a).strip() for a in (data.get("action_items") or []) if str(a).strip()][:3]
+        if not briefing:
+            raise ValueError("model returned empty briefing")
+        return {"briefing": briefing, "action_items": action_items}
+    except Exception as exc:  # noqa: BLE001
+        # Honest failure — never fabricate a briefing. The agents still ran.
+        log_event(logger, "jarvis_synthesis_failed", user_id=user.id, error=str(exc)[:200])
+        return {
+            "briefing": (
+                "I couldn't put your briefing together just now — the model didn't "
+                "return a usable response. Your agents still ran; pull up their cards "
+                "below or refresh in a moment."
+            ),
+            "action_items": [],
+            "error": "synthesis_failed",
+        }
 
 
 def run_session(db: Session, user: User, *, force: bool = False) -> dict:

@@ -29,21 +29,27 @@ class Settings(BaseSettings):
     #   LLM_MODEL:    model id passed to whichever provider is active
     LLM_PROVIDER: str = "gemini"
     # Lite tier — the cheap default for email parsing, post generation, chat.
-    LLM_MODEL: str = "gemini-2.0-flash-lite"
+    LLM_MODEL: str = "gemini-3.1-flash-lite"
 
-    # ── Tiered models (Jarvis overhaul) ──────────────────────────────────────
+    # ── Tiered models (mixture by task) ──────────────────────────────────────
     # Routed per task by llm_gateway._model_for(): light tasks (email parsing,
     # post generation, plain chat) -> LIGHT; relevance ranking / research /
     # grounded synthesis -> HEAVY; Jarvis's multi-step orchestration briefing ->
-    # ULTRA. Real, current Gemini model IDs (verified names):
-    #   lite  = gemini-2.0-flash-lite   (LIGHT default)
-    #   flash = gemini-2.5-flash        (a mid option; set via LLM_MODEL_* if wanted)
-    #   pro   = gemini-2.5-pro          (HEAVY/ULTRA default)
-    # All env-overridable. A bad/unknown id is caught by validate_models() at
-    # boot (logged loudly) and degrades gracefully to the stub at runtime.
+    # ULTRA. Current model IDs (per the product owner, June 2026):
+    #   lite  = gemini-3.1-flash-lite   (LIGHT default)
+    #   flash = gemini-3.5-flash        (HEAVY default)
+    #   pro   = gemini-3.1-pro-preview  (ULTRA default)
+    # IMPORTANT: these are NOT verifiable from here — set the authoritative IDs
+    # via env. validate_models() probes them at boot and logs llm_model_invalid
+    # for any bad id; the LLM_FALLBACK_MODELS chain auto-recovers a bad primary.
     LLM_MODEL_LIGHT: str = ""               # empty -> falls back to LLM_MODEL
-    LLM_MODEL_HEAVY: str = "gemini-2.5-pro"
-    LLM_MODEL_ULTRA: str = "gemini-2.5-pro"
+    LLM_MODEL_HEAVY: str = "gemini-3.5-flash"
+    LLM_MODEL_ULTRA: str = "gemini-3.1-pro-preview"
+
+    # Fallback chain: when the primary model errors (e.g. a 404 on a renamed
+    # model), llm_gateway retries these in order, then raises a hard error —
+    # it NEVER returns a faked/canned response. Comma-separated, env-overridable.
+    LLM_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-2.0-flash"
 
     def model_light(self) -> str:
         return self.LLM_MODEL_LIGHT or self.LLM_MODEL
@@ -53,6 +59,9 @@ class Settings(BaseSettings):
 
     def model_ultra(self) -> str:
         return self.LLM_MODEL_ULTRA or self.model_heavy()
+
+    def fallback_models(self) -> list[str]:
+        return [m.strip() for m in (self.LLM_FALLBACK_MODELS or "").split(",") if m.strip()]
     # OpenAI-compatible endpoint for the "local" provider (vLLM/TGI on RunPod,
     # or the eventual fine-tuned Axolot model behind the same wire format).
     LLM_BASE_URL: str = ""          # e.g. https://<pod>.runpod.net/v1

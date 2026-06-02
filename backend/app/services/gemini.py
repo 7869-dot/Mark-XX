@@ -1,13 +1,47 @@
-"""Gemini integration with stub fallback, exponential backoff, and logging."""
+"""Gemini integration: stub for offline/test, real model fallback chain when
+live, honest errors on hard failure (never a faked response), and logging."""
 import json
 import random
+import re
 import time
 
 from app.core.config import settings
 from app.core.logging import get_logger, log_event
 
 logger = get_logger("axolot.gemini")
-MAX_RETRIES = 3
+
+# Honest, user-safe message when the model is genuinely unreachable (every model
+# in the fallback chain failed). This is NOT a faked answer — it names the
+# failure so nothing pre-written ever masquerades as a real LLM response.
+LLM_UNAVAILABLE = (
+    "I couldn't reach the AI model just now — every model in the fallback chain "
+    "failed. I won't fake an answer; please try again in a moment."
+)
+
+
+def extract_json(raw: str):
+    """Parse a model response into JSON, tolerating ```json ... ``` fences and
+    surrounding prose (gemini-2.5/3.x pro often wraps JSON in markdown).
+
+    Steps: strip whitespace -> strip code fences -> json.loads; if still invalid,
+    grab the first {...}/[...] block; if THAT fails, log the raw text at DEBUG
+    and raise ValueError (callers surface a clean error — never a faked result).
+    """
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    try:
+        return json.loads(text)
+    except Exception:  # noqa: BLE001
+        match = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except Exception:  # noqa: BLE001
+                pass
+    logger.debug("json_extract_failed raw=%r", raw)
+    raise ValueError("model response was not valid JSON")
 
 
 _TONE_KEYWORDS = ("analytical", "witty", "warm", "provocative", "poetic")
@@ -470,47 +504,36 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
 
 
 def generate(prompt: str, response_format: str = "text") -> str:
-    """Generate text via Gemini with exponential backoff, or stub fallback.
+    """Generate text via the LLM gateway (which owns the model fallback chain).
 
-    Never raises — callers always get a usable string so tasks never hang.
+    - Offline/test (USE_STUBS or no API key): returns the deterministic stub —
+      intentional, NOT a failure mask.
+    - Live: one gateway call that internally tries the primary model then each
+      fallback model. If EVERY model fails, returns LLM_UNAVAILABLE — an honest
+      error, never a pre-written answer dressed up as a real response.
     """
     if settings.USE_STUBS or not settings.GEMINI_API_KEY:
         return _stub_response(prompt, response_format)
 
-    last_error: Exception | None = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        start = time.perf_counter()
-        try:
-            from app.services import llm_gateway
+    start = time.perf_counter()
+    try:
+        from app.services import llm_gateway
 
-            text = llm_gateway.complete(prompt, task_type=response_format)
-            latency_ms = round((time.perf_counter() - start) * 1000, 1)
-            log_event(
-                logger,
-                "gemini_call",
-                attempt=attempt,
-                latency_ms=latency_ms,
-                prompt_chars=len(prompt),
-                response_format=response_format,
-                ok=True,
-            )
-            return text
-        except Exception as exc:  # noqa: BLE001
-            last_error = exc
-            latency_ms = round((time.perf_counter() - start) * 1000, 1)
-            log_event(
-                logger,
-                "gemini_call_failed",
-                attempt=attempt,
-                latency_ms=latency_ms,
-                error=str(exc),
-            )
-            if attempt < MAX_RETRIES:
-                time.sleep(min(2 ** attempt, 8) + random.uniform(0, 0.5))
-
-    # Graceful degradation — return a stub so the task completes, not hangs.
-    log_event(logger, "gemini_degraded", error=str(last_error))
-    return _stub_response(prompt, response_format)
+        text = llm_gateway.complete(prompt, task_type=response_format)
+        log_event(
+            logger, "gemini_call",
+            latency_ms=round((time.perf_counter() - start) * 1000, 1),
+            prompt_chars=len(prompt), response_format=response_format, ok=True,
+        )
+        return text
+    except Exception as exc:  # noqa: BLE001
+        # Every model in the chain failed — surface honesty, not a stub.
+        log_event(
+            logger, "gemini_unavailable",
+            latency_ms=round((time.perf_counter() - start) * 1000, 1),
+            response_format=response_format, error=str(exc)[:200],
+        )
+        return LLM_UNAVAILABLE
 
 
 def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> str:
@@ -550,18 +573,20 @@ def generate_with_tools(prompt: str, tools: list, hint: str | None = None) -> st
         )
         if text:
             return text
-        # Empty text can happen if the model ended on a bare tool call — fall
-        # back to deterministic routing, then to plain text generation, so the
-        # user always gets an actual answer.
+        # Empty text => the model ended on a bare tool call. Deterministic tool
+        # routing EXECUTES the real tools (live inbox/calendar data), so it's a
+        # real result, not a canned phrase — fine to use here.
         routed = stub_tool_response(hint or prompt, tools)
-        return routed or generate(prompt, response_format="text")
+        return routed or LLM_UNAVAILABLE
     except Exception as exc:  # noqa: BLE001
+        # Live tool call failed across the fallback chain — honest error, not a
+        # faked phrase.
         log_event(
-            logger, "gemini_tool_call_failed",
+            logger, "gemini_tool_unavailable",
             latency_ms=round((time.perf_counter() - start) * 1000, 1),
-            error=str(exc),
+            error=str(exc)[:200],
         )
-        return stub_tool_response(hint or prompt, tools)
+        return LLM_UNAVAILABLE
 
 
 def generate_for_agent(db, agent, instruction: str, response_format: str = "text") -> str:

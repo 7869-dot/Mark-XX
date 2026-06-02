@@ -190,36 +190,56 @@ def _model_for(task_type: str) -> str:
 
 
 # ── Public surface ───────────────────────────────────────────────────────────
+def _candidate_models(task_type: str) -> list[str]:
+    """Primary (tier) model first, then the configured fallback chain — deduped,
+    order preserved. This is the PRIMARY -> FLASH fallback -> ... -> hard error
+    chain. A renamed/404'd primary auto-recovers onto a fallback instead of
+    failing the whole call."""
+    out: list[str] = []
+    for m in [_model_for(task_type), *settings.fallback_models()]:
+        if m and m not in out:
+            out.append(m)
+    return out
+
+
 def complete(
     prompt: str,
     *,
     task_type: str = "text",
     tools: list | None = None,
 ) -> str:
-    """Pure provider call: select provider+model from config, run, return text.
-
-    Raises on failure — the retry/stub policy is owned by gemini.generate.
+    """Provider call with a model fallback chain. Tries the tier model, then each
+    fallback model in order; returns the first success. Raises the last error if
+    ALL models fail — it NEVER returns a faked/canned string. The stub policy
+    (USE_STUBS / no key) is owned one layer up in gemini.generate.
     """
     provider = _provider()
-    model = _model_for(task_type)
-    start = time.perf_counter()
-    try:
-        text = provider.complete(prompt, model=model, tools=tools)
-        log_event(
-            logger, "llm_complete",
-            provider=provider.name, model=model, task_type=task_type,
-            latency_ms=round((time.perf_counter() - start) * 1000, 1),
-            prompt_chars=len(prompt), tools=bool(tools), ok=True,
-        )
-        return text
-    except Exception as exc:  # noqa: BLE001
-        log_event(
-            logger, "llm_complete_failed",
-            provider=provider.name, model=model, task_type=task_type,
-            latency_ms=round((time.perf_counter() - start) * 1000, 1),
-            error=str(exc),
-        )
-        raise
+    candidates = _candidate_models(task_type)
+    last_exc: Exception | None = None
+    for i, model in enumerate(candidates):
+        start = time.perf_counter()
+        try:
+            text = provider.complete(prompt, model=model, tools=tools)
+            log_event(
+                logger, "llm_complete",
+                provider=provider.name, model=model, task_type=task_type,
+                fallback=(i > 0), attempt=i + 1,
+                latency_ms=round((time.perf_counter() - start) * 1000, 1),
+                prompt_chars=len(prompt), tools=bool(tools), ok=True,
+            )
+            return text
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            log_event(
+                logger, "llm_complete_failed",
+                provider=provider.name, model=model, task_type=task_type,
+                fallback=(i > 0), attempt=i + 1,
+                latency_ms=round((time.perf_counter() - start) * 1000, 1),
+                error=str(exc)[:200],
+            )
+    log_event(logger, "llm_all_models_failed", task_type=task_type,
+              models=candidates, error=str(last_exc)[:200] if last_exc else None)
+    raise last_exc or RuntimeError("all candidate models failed")
 
 
 def health() -> bool:

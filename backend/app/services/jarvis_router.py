@@ -163,7 +163,7 @@ def _draft_post(db: Session, agent: Agent | None, message: str) -> tuple[str, st
     if not agent:
         return message.strip(), ""
     try:
-        from app.services.gemini import generate_for_agent
+        from app.services.gemini import generate_for_agent, extract_json
 
         instruction = (
             f"The user wants to post this idea: \"{message}\". Draft a short social "
@@ -171,7 +171,7 @@ def _draft_post(db: Session, agent: Agent | None, message: str) -> tuple[str, st
             "with keys: content (the post), island_hint (a topic/community it fits, "
             "or empty string). No preamble."
         )
-        data = json.loads(generate_for_agent(db, agent, instruction, response_format="post_draft_mode"))
+        data = extract_json(generate_for_agent(db, agent, instruction, response_format="post_draft_mode"))
         return (str(data.get("content", "")).strip() or message.strip(), str(data.get("island_hint", "")).strip()[:200])
     except Exception:  # noqa: BLE001
         return message.strip(), ""

@@ -99,10 +99,10 @@ def _rank_with_llm(db: Session, agent: Agent | None, profile: UserProfile | None
         f"Items:\n{listing}"
     )
     try:
-        from app.services.gemini import generate_for_agent
+        from app.services.gemini import generate_for_agent, extract_json
 
         raw = generate_for_agent(db, agent, instruction, response_format="web_relevance")
-        data = json.loads(raw)
+        data = extract_json(raw)
         out: dict[int, dict] = {}
         for entry in data if isinstance(data, list) else []:
             idx = int(entry.get("index"))

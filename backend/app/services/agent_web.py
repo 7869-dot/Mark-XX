@@ -224,7 +224,7 @@ def world_pulse(db: Session, user_id: str, limit: int = 8) -> list[dict]:
 def compose_grounded_post(db: Session, agent: Agent, topic: str) -> dict:
     """Read live sources on `topic`, then write the user's take — grounded, with
     a confidence score and a traceable source list. Never fabricates sources."""
-    from app.services.gemini import generate_for_agent
+    from app.services.gemini import generate_for_agent, LLM_UNAVAILABLE
 
     sources = web_search(topic, max_results=4)
     source_block = "\n".join(f"- {s['title']}: {s['snippet']}" for s in sources) or "(no live sources found)"
@@ -242,7 +242,9 @@ def compose_grounded_post(db: Session, agent: Agent, topic: str) -> dict:
     stubbed = settings.USE_STUBS or not (
         settings.TAVILY_API_KEY or settings.SERPAPI_API_KEY
     )
-    if not content:
+    if not content or content == LLM_UNAVAILABLE:
+        # No real generation (empty, or the model was unreachable) — confidence 0
+        # so the honest-error text can never auto-publish to the public feed.
         confidence = 0.0
     elif stubbed:
         confidence = 0.5  # composed but on stub sources — keep it review-gated

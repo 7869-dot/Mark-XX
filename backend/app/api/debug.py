@@ -90,7 +90,7 @@ def gemini_ping(
         "use_stubs": bool(settings.USE_STUBS),
         "gemini_key_present": key_present,
         "gemini_key_tail": (settings.GEMINI_API_KEY or "")[-4:] if key_present else None,
-        "model": "gemini-2.0-flash",
+        "model": settings.model_light(),
         "ok": False,
         "response": None,
         "error": None,
@@ -103,7 +103,7 @@ def gemini_ping(
 
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         resp = client.models.generate_content(
-            model="gemini-2.0-flash", contents="Say hello in one word."
+            model=settings.model_light(), contents="Say hello in one word."
         )
         out["ok"] = True
         out["response"] = getattr(resp, "text", "") or ""

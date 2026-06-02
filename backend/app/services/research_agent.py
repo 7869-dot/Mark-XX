@@ -49,9 +49,9 @@ def research(db: Session, query: str, user_id: str) -> dict:
             f"Raw results:\n{source_block}"
         )
         try:
-            from app.services.gemini import generate_for_agent
+            from app.services.gemini import generate_for_agent, extract_json
 
-            data = json.loads(generate_for_agent(db, agent, instruction, response_format="research"))
+            data = extract_json(generate_for_agent(db, agent, instruction, response_format="research"))
             synthesis = str(data.get("synthesis", "")).strip()
             key_points = [str(k).strip() for k in (data.get("key_points") or []) if str(k).strip()][:5]
             follow_ups = [str(q).strip() for q in (data.get("follow_up_questions") or []) if str(q).strip()][:3]
@@ -59,7 +59,11 @@ def research(db: Session, query: str, user_id: str) -> dict:
             log_event(logger, "research_synthesis_failed", user_id=user_id, error=str(exc))
 
     if not synthesis:
-        synthesis = f"Here's what I found on {query} — skim the sources for the detail."
+        # Honest, not fabricated: we have the sources but no model synthesis.
+        synthesis = (
+            f"I pulled these sources on {query} but couldn't synthesise them just "
+            "now — the model didn't return a usable response. The links are below."
+        )
     log_event(logger, "research_done", user_id=user_id, sources=len(sources))
     return {
         "query": query,

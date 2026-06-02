@@ -62,10 +62,10 @@ def execute_task(db: Session, task: AgentTask, user_id: str) -> AgentTaskResult 
         "(who it's likely for), draft_content (the email body). No preamble."
     )
     try:
-        from app.services.gemini import generate_for_agent
+        from app.services.gemini import generate_for_agent, extract_json
 
         raw = generate_for_agent(db, agent, instruction, response_format="email_draft")
-        data = json.loads(raw)
+        data = extract_json(raw)
         subject = str(data.get("subject_line", "")).strip()[:500]
         recipient = str(data.get("recipient_hint", "")).strip()[:200]
         body = str(data.get("draft_content", "")).strip()
