@@ -99,11 +99,12 @@ def gemini_ping(
         out["error"] = "GEMINI_API_KEY not set"
         return envelope(out)
     try:
-        import google.generativeai as genai  # type: ignore
+        from google import genai  # google-genai SDK
 
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        resp = model.generate_content("Say hello in one word.")
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash", contents="Say hello in one word."
+        )
         out["ok"] = True
         out["response"] = getattr(resp, "text", "") or ""
     except Exception as exc:  # noqa: BLE001

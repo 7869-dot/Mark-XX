@@ -32,6 +32,10 @@ class User(Base):
     google_scopes = Column(Text, nullable=True)
     gmail_connected = Column(Boolean, default=False)
     calendar_connected = Column(Boolean, default=False)
+    # Why Google integration is currently disconnected, if it is — e.g.
+    # "token_expired" when a refresh hits invalid_grant. NULL when connected.
+    # Surfaced via /integrations/status so the UI can prompt "Reconnect Google".
+    google_disconnect_reason = Column(String, nullable=True)
 
     # Multi-agent schema: User.agents holds the full collection (cascade lives
     # here), while User.agent is a read-only view onto the single is_primary

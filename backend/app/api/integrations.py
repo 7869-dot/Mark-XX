@@ -43,9 +43,14 @@ def _agent_id(user: User):
 # ── Connection status & OAuth flow ─────────────────────────────────────────
 @router.get("/integrations/status")
 def status(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    connected = google_auth.is_connected(user)
+    reason = None if connected else (user.google_disconnect_reason or None)
     return ok({
         "gmail": bool(user.gmail_connected),
         "calendar": bool(user.calendar_connected),
+        # Consolidated Google connection state so the UI can show a
+        # "Reconnect Google" prompt when a refresh token expires/revokes (Bug 3).
+        "google": {"connected": connected, "reason": reason},
         "stub_mode": google_auth.is_stub(),
         "token_health": google_auth.check_token_health(db, user),
     }, user.id)

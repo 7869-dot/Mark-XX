@@ -2,7 +2,7 @@
 logic and whatever model is behind it.
 
 Why this exists (and why every LLM call must route through it):
-  Phase 1 (now):        Gemini via google-generativeai.
+  Phase 1 (now):        Gemini via the google-genai SDK.
   Phase 3 (post-funding): self-hosted models on RunPod A100s behind an
                           OpenAI-compatible server (vLLM/TGI).
   Phase 4 (Series A):    the proprietary Axolot model — same wire format.
@@ -14,7 +14,7 @@ imports an SDK. Swapping Gemini for an A100 pod is then a deploy-var change
 
 Design:
   - `LLMProvider` protocol: every backend implements `complete()` + `health()`.
-  - `GeminiProvider` wraps the existing google-generativeai path.
+  - `GeminiProvider` wraps the google-genai SDK path.
   - `LocalProvider` speaks the OpenAI /chat/completions wire format — covers
     vLLM, TGI, Ollama, and the eventual fine-tuned Axolot endpoint.
   - Provider + model are read from settings at call time, so a config reload
@@ -53,27 +53,35 @@ class LLMProvider(Protocol):
 
 # ── Gemini (Phase 1) ─────────────────────────────────────────────────────────
 class GeminiProvider:
+    """Wraps the current `google-genai` SDK (`from google import genai`).
+
+    Migrated off the deprecated `google-generativeai` package (support ended).
+    The new client is `genai.Client(api_key=...)`; generation is
+    `client.models.generate_content(model=..., contents=..., config=...)`.
+    Python callables passed as `tools` get automatic function calling by default.
+    """
+
     name = "gemini"
 
-    def complete(self, prompt: str, *, model: str, tools: list | None = None) -> str:
-        import google.generativeai as genai  # type: ignore
+    def _client(self):
+        from google import genai  # lazy — only when a live call happens
 
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        if tools:
-            gen_model = genai.GenerativeModel(model, tools=tools)
-            chat = gen_model.start_chat(enable_automatic_function_calling=True)
-            response = chat.send_message(prompt)
-            return (getattr(response, "text", "") or "").strip()
-        gen_model = genai.GenerativeModel(model)
-        response = gen_model.generate_content(prompt)
-        return response.text
+        return genai.Client(api_key=settings.GEMINI_API_KEY)
+
+    def complete(self, prompt: str, *, model: str, tools: list | None = None) -> str:
+        from google.genai import types
+
+        client = self._client()
+        config = types.GenerateContentConfig(tools=tools) if tools else None
+        response = client.models.generate_content(
+            model=model, contents=prompt, config=config
+        )
+        return (getattr(response, "text", "") or "").strip()
 
     def health(self) -> bool:
         try:
-            import google.generativeai as genai  # type: ignore
-
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            genai.GenerativeModel(settings.LLM_MODEL).generate_content("ping")
+            # count_tokens is the cheapest call that still validates the model id.
+            self._client().models.count_tokens(model=settings.model_light(), contents="ping")
             return True
         except Exception:  # noqa: BLE001
             return False
@@ -221,6 +229,49 @@ def health() -> bool:
     if settings.LLM_PROVIDER.lower() == "gemini" and not settings.GEMINI_API_KEY:
         return True  # stub path is healthy by definition
     return _provider().health()
+
+
+def validate_models() -> dict:
+    """Boot-time model-name validation: probe each configured tier with a cheap
+    count_tokens call and log loudly if any model id is invalid (e.g. a 404 like
+    'models/gemini-3-pro is not found'). This makes a bad model name fail visibly
+    at startup instead of silently burning retries on every runtime call.
+
+    No-ops (and logs why) when stubbed, non-Gemini, or no API key. Never raises.
+    Returns {model_id: bool} for the distinct tier models probed.
+    """
+    if settings.USE_STUBS or settings.LLM_PROVIDER.lower() != "gemini" or not settings.GEMINI_API_KEY:
+        log_event(logger, "llm_model_validation_skipped",
+                  use_stubs=settings.USE_STUBS, provider=settings.LLM_PROVIDER,
+                  key_present=bool(settings.GEMINI_API_KEY))
+        return {}
+
+    tiers = {
+        "light": settings.model_light(),
+        "heavy": settings.model_heavy(),
+        "ultra": settings.model_ultra(),
+    }
+    results: dict[str, bool] = {}
+    try:
+        from google import genai
+
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "llm_model_validation_failed", error=str(exc)[:200])
+        return {}
+
+    for tier, model in tiers.items():
+        if model in results:
+            continue
+        try:
+            client.models.count_tokens(model=model, contents="ping")
+            results[model] = True
+        except Exception as exc:  # noqa: BLE001
+            results[model] = False
+            log_event(logger, "llm_model_invalid", tier=tier, model=model, error=str(exc)[:200])
+
+    log_event(logger, "llm_model_validation", results=results, all_valid=all(results.values()))
+    return results
 
 
 def llm_gateway(prompt: str, agent_id: str | None = None, task_type: str = "text") -> str:

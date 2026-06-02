@@ -1,0 +1,31 @@
+# Render Blueprint for the Axolot API.
+#
+# Bug 1 fix: Render's filesystem is ephemeral, so a Chromium installed locally
+# (or on a previous deploy) is GONE on every new deploy. The buildCommand below
+# reinstalls Chromium fresh on each build so Playwright's headless browser is
+# always present at runtime. `--with-deps` pulls the OS shared libraries Chromium
+# needs on Render's build image.
+#
+# Secrets (GEMINI_API_KEY, GOOGLE_CLIENT_ID/SECRET, SECRET_KEY, ENCRYPTION_KEY,
+# DATABASE_URL, SERPAPI_KEY, ...) are managed in the Render dashboard, not here.
+services:
+  - type: web
+    name: axolot-api
+    runtime: python
+    rootDir: backend
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    buildCommand: "pip install -r requirements.txt && python -m playwright install chromium --with-deps"
+    preDeployCommand: "alembic upgrade head"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      # Pin a Playwright-supported Python. Browsers install to the default
+      # ~/.cache/ms-playwright during build and are read from there at runtime.
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # Optional cloud-safe search fallback used when Playwright AND the httpx
+      # DuckDuckGo path both fail (server IPs often get blocked). Set in the
+      # dashboard; the code skips it silently when unset.
+      - key: SERPAPI_KEY
+        sync: false

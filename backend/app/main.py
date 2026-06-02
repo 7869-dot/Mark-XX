@@ -104,6 +104,29 @@ async def lifespan(app: FastAPI):
         finally:
             _db.close()
 
+    # Boot-time diagnostics — fail loudly here, not silently at runtime.
+    # Bug 2: validate configured Gemini model names (404s show at boot).
+    try:
+        from app.services import llm_gateway
+
+        llm_gateway.validate_models()
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "llm_model_validation_error", error=str(exc))
+    # Bug 1: report whether the local headless browser (Playwright + Chromium)
+    # is usable, so a missing Render Chromium install is obvious on boot.
+    try:
+        from app.services.local_browser import browser_available
+
+        usable = browser_available()
+        log_event(logger, "browser_availability", playwright_usable=usable)
+        if not usable:
+            log_event(logger, "startup_warning",
+                      issue="Playwright/Chromium not usable — web search falls back "
+                            "to httpx (DDG Lite) then SerpAPI. Run "
+                            "`python -m playwright install chromium --with-deps` in the build.")
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "browser_availability_check_failed", error=str(exc))
+
     register_jobs(scheduler)
     scheduler.start()
     log_event(

@@ -108,6 +108,22 @@ def run_report(db: Session, user: User, *, limit: int = 40) -> dict:
     Returns a structured JSON summary. Never raises; logs an AgentRunLog row.
     Leaves a TODO for live IMAP for non-Gmail inboxes.
     """
+    # Bug 3: if Google is disconnected (e.g. an expired/revoked refresh token),
+    # don't attempt any Gmail read — skip cleanly and surface the reconnect need.
+    from app.services import google_auth
+
+    if not google_auth.is_connected(user):
+        log_event(logger, "email_agent_skipped", user_id=user.id, reason="google_disconnected")
+        log_run(db, user.id, EMAIL_AGENT,
+                "Skipped — Google disconnected; reconnect to triage your inbox.", status="skipped")
+        return {
+            "connected": False,
+            "skipped": True,
+            "reason": "google_disconnected",
+            "urgent": [], "important": [], "low": [], "action_required": [],
+            "counts": {"urgent": 0, "important": 0, "low": 0},
+        }
+
     rows = (
         db.query(ClassifiedEmail)
         .filter(ClassifiedEmail.user_id == user.id, ClassifiedEmail.dismissed.is_(False))

@@ -127,6 +127,9 @@ def run_schema_sync(engine: Engine) -> None:
         _add_column(engine, "agents", "is_seed_persona", "BOOLEAN", default_sql="false")
         _add_column(engine, "users", "onboarding_complete", "BOOLEAN", default_sql="false")
 
+        # --- Google integration disconnect reason (graceful invalid_grant) ---
+        _add_column(engine, "users", "google_disconnect_reason", "VARCHAR(64)")
+
         # --- Unified feed: agent-vs-human post tagging (Sprint 2) ---
         # Boolean default false works on both PG and SQLite (>=3.23).
         _add_column(engine, "agent_posts", "is_agent_post", "BOOLEAN", default_sql="false")

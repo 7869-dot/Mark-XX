@@ -134,43 +134,46 @@ def _headers() -> dict:
     }
 
 
-def _search_httpx(query: str, max_results: int) -> list[dict]:
-    import httpx
+def _parse_lite(html: str, max_results: int) -> list[dict]:
+    """Parse DuckDuckGo Lite's table layout into [{title,url,snippet}].
+    Lite emits a result-link row followed by a result-snippet row, in order."""
     from bs4 import BeautifulSoup
 
-    timeout = settings.WEB_FETCH_TIMEOUT_SECONDS
-    resp = httpx.post(
-        DDG_HTML, data={"q": query}, headers=_headers(), timeout=timeout, follow_redirects=True
-    )
-    resp.raise_for_status()
-    if _looks_blocked(resp.text):
-        raise RuntimeError("ddg_blocked")
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
+    links = soup.select("a.result-link")
+    snippets = soup.select("td.result-snippet, .result-snippet")
     out: list[dict] = []
-    for res in soup.select("div.result, div.web-result")[: max_results * 2]:
-        a = res.select_one("a.result__a")
-        if not a:
-            continue
+    for i, a in enumerate(links):
         url = _decode_ddg_href(a.get("href", ""))
         if not url.startswith("http"):
             continue
-        snippet_el = res.select_one(".result__snippet")
-        out.append({
-            "title": a.get_text(strip=True),
-            "url": url,
-            "snippet": (snippet_el.get_text(strip=True) if snippet_el else "")[:300],
-        })
+        snip = snippets[i].get_text(" ", strip=True) if i < len(snippets) else ""
+        out.append({"title": a.get_text(strip=True), "url": url, "snippet": snip[:300]})
         if len(out) >= max_results:
             break
     return out
 
 
+def _search_httpx(query: str, max_results: int) -> list[dict]:
+    """DuckDuckGo Lite over plain httpx — no JS, far more scrape-friendly than the
+    /html/ endpoint and the path that works best from cloud/server IPs."""
+    import httpx
+
+    resp = httpx.post(
+        DDG_LITE, data={"q": query}, headers=_headers(),
+        timeout=settings.WEB_FETCH_TIMEOUT_SECONDS, follow_redirects=True,
+    )
+    resp.raise_for_status()
+    if _looks_blocked(resp.text):
+        raise RuntimeError("ddg_blocked")
+    return _parse_lite(resp.text, max_results)
+
+
 # ── Search: Playwright ───────────────────────────────────────────────────────
 def _search_playwright(query: str, max_results: int) -> list[dict]:
     from playwright.sync_api import sync_playwright  # lazy
-    from bs4 import BeautifulSoup
 
-    def _do() -> list[dict]:
+    def _do() -> str:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=settings.BROWSER_HEADLESS)
             try:
@@ -181,43 +184,65 @@ def _search_playwright(query: str, max_results: int) -> list[dict]:
                     extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
                 )
                 page = ctx.new_page()
-                page.goto(f"{DDG_HTML}?q={quote_plus(query)}",
+                page.goto(f"{DDG_LITE}?q={quote_plus(query)}",
                           wait_until="domcontentloaded",
                           timeout=settings.BROWSER_NAV_TIMEOUT_MS)
-                html = page.content()
+                return page.content()
             finally:
                 browser.close()
-        if _looks_blocked(html):
-            raise RuntimeError("ddg_blocked")
-        soup = BeautifulSoup(html, "html.parser")
-        out: list[dict] = []
-        for res in soup.select("div.result, div.web-result")[: max_results * 2]:
-            a = res.select_one("a.result__a")
-            if not a:
-                continue
-            url = _decode_ddg_href(a.get("href", ""))
-            if not url.startswith("http"):
-                continue
-            snippet_el = res.select_one(".result__snippet")
-            out.append({
-                "title": a.get_text(strip=True),
-                "url": url,
-                "snippet": (snippet_el.get_text(strip=True) if snippet_el else "")[:300],
-            })
-            if len(out) >= max_results:
-                break
-        return out
 
-    return _run_blocking(_do)
+    html = _run_blocking(_do)
+    if _looks_blocked(html):
+        raise RuntimeError("ddg_blocked")
+    return _parse_lite(html, max_results)
+
+
+# ── Search: SerpAPI last-resort (cloud-safe, optional) ───────────────────────
+def _serpapi_key() -> str:
+    """Read the SerpAPI key from env (SERPAPI_KEY) first, then settings. Empty
+    string when unconfigured — caller skips the fallback silently."""
+    import os
+
+    return (os.environ.get("SERPAPI_KEY") or settings.SERPAPI_API_KEY or "").strip()
+
+
+def _search_serpapi(query: str, max_results: int) -> list[dict]:
+    """Reliable cloud fallback when both Playwright and httpx fail (e.g. server
+    IP blocked by DuckDuckGo). Skipped silently when SERPAPI_KEY is absent."""
+    import httpx
+
+    key = _serpapi_key()
+    if not key:
+        return []
+    resp = httpx.get(
+        "https://serpapi.com/search.json",
+        params={"q": query, "api_key": key, "num": max_results, "engine": "google"},
+        timeout=settings.WEB_FETCH_TIMEOUT_SECONDS,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    out = [
+        {"title": r.get("title", ""), "url": r.get("link", ""), "snippet": (r.get("snippet", "") or "")[:300]}
+        for r in (data.get("organic_results") or [])
+        if r.get("link")
+    ]
+    return out[:max_results]
 
 
 def local_search(query: str, max_results: int = 5) -> list[dict]:
-    """Free web search via local headless browser. Returns [{title,url,snippet}].
-    Tries Playwright, then httpx+BS4, then []. Never raises."""
+    """Free web search. Returns [{title,url,snippet}]. Tries, in order:
+    Playwright (headless Chromium) -> httpx DuckDuckGo Lite -> SerpAPI (only if
+    SERPAPI_KEY is set) -> []. Never raises."""
     query = (query or "").strip()
     if not query:
         return []
-    for name, fn in (("playwright", _search_playwright), ("httpx", _search_httpx)):
+    for name, fn in (
+        ("playwright", _search_playwright),
+        ("httpx", _search_httpx),
+        ("serpapi", _search_serpapi),
+    ):
+        if name == "serpapi" and not _serpapi_key():
+            continue  # skip silently when no key
         try:
             results = fn(query, max_results)
             if results:

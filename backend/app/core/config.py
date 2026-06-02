@@ -28,21 +28,22 @@ class Settings(BaseSettings):
     #   LLM_PROVIDER: "gemini" (default) | "local" (any OpenAI-compatible server)
     #   LLM_MODEL:    model id passed to whichever provider is active
     LLM_PROVIDER: str = "gemini"
-    LLM_MODEL: str = "gemini-3.1-flash-lite"
+    # Lite tier — the cheap default for email parsing, post generation, chat.
+    LLM_MODEL: str = "gemini-2.0-flash-lite"
 
     # ── Tiered models (Jarvis overhaul) ──────────────────────────────────────
     # Routed per task by llm_gateway._model_for(): light tasks (email parsing,
     # post generation, plain chat) -> LIGHT; relevance ranking / research /
     # grounded synthesis -> HEAVY; Jarvis's multi-step orchestration briefing ->
-    # ULTRA. Never below Gemini 3.
-    #   LIGHT defaults to the verified working model (LLM_MODEL).
-    #   HEAVY/ULTRA default to gemini-3-pro and are env-overridable — set the
-    #   exact released IDs for your project (e.g. LLM_MODEL_ULTRA=gemini-3-ultra)
-    #   once confirmed. A bad/unknown id degrades gracefully to the stub via
-    #   gemini.generate, so a misconfigured tier never crashes a request.
+    # ULTRA. Real, current Gemini model IDs (verified names):
+    #   lite  = gemini-2.0-flash-lite   (LIGHT default)
+    #   flash = gemini-2.5-flash        (a mid option; set via LLM_MODEL_* if wanted)
+    #   pro   = gemini-2.5-pro          (HEAVY/ULTRA default)
+    # All env-overridable. A bad/unknown id is caught by validate_models() at
+    # boot (logged loudly) and degrades gracefully to the stub at runtime.
     LLM_MODEL_LIGHT: str = ""               # empty -> falls back to LLM_MODEL
-    LLM_MODEL_HEAVY: str = "gemini-3-pro"
-    LLM_MODEL_ULTRA: str = "gemini-3-pro"
+    LLM_MODEL_HEAVY: str = "gemini-2.5-pro"
+    LLM_MODEL_ULTRA: str = "gemini-2.5-pro"
 
     def model_light(self) -> str:
         return self.LLM_MODEL_LIGHT or self.LLM_MODEL

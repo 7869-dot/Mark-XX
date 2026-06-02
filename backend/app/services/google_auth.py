@@ -23,6 +23,29 @@ def is_stub() -> bool:
     return settings.USE_STUBS or not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET
 
 
+def _is_invalid_grant(exc: Exception) -> bool:
+    """True when a refresh failed because the refresh token is expired/revoked."""
+    return "invalid_grant" in str(exc).lower()
+
+
+def mark_disconnected(db: Session, user: User, reason: str = "token_expired") -> None:
+    """Flag Google as disconnected so the agent stops trying and the UI can
+    prompt a reconnect. Keeps the (now-useless) tokens; a re-consent overwrites
+    them via store_tokens, which clears the reason."""
+    user.gmail_connected = False
+    user.calendar_connected = False
+    user.google_disconnect_reason = reason
+    db.commit()
+    log_event(logger, "google_disconnected", user_id=user.id, reason=reason)
+
+
+def is_connected(user: User) -> bool:
+    """Whether Google is usable for this user right now."""
+    if is_stub():
+        return bool(user.gmail_connected or user.calendar_connected)
+    return bool((user.gmail_connected or user.calendar_connected) and not user.google_disconnect_reason)
+
+
 # ── Encryption at rest ─────────────────────────────────────────────────────
 def _fernet():
     from cryptography.fernet import Fernet
@@ -70,6 +93,8 @@ def store_tokens(
     granted = scopes or ""
     user.gmail_connected = "gmail" in granted
     user.calendar_connected = "calendar" in granted
+    # A fresh (re)connect clears any prior disconnect reason.
+    user.google_disconnect_reason = None
     db.commit()
     log_event(
         logger, "google_tokens_stored",
@@ -84,6 +109,7 @@ def revoke_google_access(db: Session, user: User) -> None:
     user.google_scopes = None
     user.gmail_connected = False
     user.calendar_connected = False
+    user.google_disconnect_reason = None  # explicit user disconnect, not an error
     db.commit()
     log_event(logger, "google_access_revoked", user_id=user.id)
 
@@ -136,6 +162,10 @@ def get_google_credentials(db: Session, user: User):
             log_event(logger, "google_token_refreshed", user_id=user.id)
         except Exception as exc:  # noqa: BLE001
             log_event(logger, "google_token_refresh_failed", user_id=user.id, error=str(exc))
+            # Expired/revoked refresh token — mark disconnected so the agent stops
+            # retrying and the UI can prompt a reconnect (Bug 3).
+            if _is_invalid_grant(exc):
+                mark_disconnected(db, user, "token_expired")
             return None
     return creds
 
