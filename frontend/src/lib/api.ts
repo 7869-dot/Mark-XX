@@ -409,6 +409,60 @@ export type JarvisChatResponse = {
   follow_up: string | null;
 };
 
+// ── Jarvis manager overhaul ──
+export type OnboardingQuestion = {
+  id: string;
+  type: "options" | "text";
+  question: string;
+  options?: string[];
+  multi?: boolean;
+};
+
+export type JarvisProfile = {
+  interests: string[];
+  hates: string[];
+  goals: Record<string, unknown>;
+  communication_style: string;
+  opportunity_preferences: string[];
+  feedback_log: Array<Record<string, unknown>>;
+  onboarding_complete: boolean;
+  updated_at?: string | null;
+};
+
+export type WebFind = {
+  id: string;
+  title: string;
+  url: string;
+  summary: string;
+  category: string;
+  relevance_score: number;
+};
+
+export type SubAgentName = "email_agent" | "feed_agent" | "web_agent";
+
+export type SubAgentStatus = {
+  agent_name: SubAgentName;
+  last_run: string | null;
+  last_summary: string | null;
+  status: string;
+};
+
+export type JarvisSession =
+  | { onboarding: true; greeting: string; questions: OnboardingQuestion[] }
+  | {
+      onboarding: false;
+      greeting: string;
+      briefing: string;
+      action_items: string[];
+      reports: {
+        email: Record<string, any>;
+        feed: Record<string, any>;
+        web: { top_finds: WebFind[] } & Record<string, any>;
+      };
+      agent_status: SubAgentStatus[];
+      focus_prompt: string;
+    };
+
 export type ScheduleDraftItem = {
   id: string;
   title: string;
@@ -796,6 +850,29 @@ export const api = {
     request<{ id: string; approved: boolean; posted: boolean }>(`/agents/post-drafts/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ approved, content }),
+    }),
+
+  // ── Jarvis manager overhaul: session, memory, sub-agents ──
+  jarvisSessionStart: () =>
+    request<JarvisSession>("/jarvis/session/start", { method: "POST" }),
+  jarvisMemory: () => request<{ profile: JarvisProfile }>("/jarvis/memory"),
+  submitOnboarding: (answers: Record<string, unknown>) =>
+    request<{ profile: JarvisProfile }>("/jarvis/memory", {
+      method: "PATCH",
+      body: JSON.stringify({ answers }),
+    }),
+  updateJarvisMemory: (patch: Record<string, unknown>) =>
+    request<{ profile: JarvisProfile }>("/jarvis/memory", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  runSubAgent: (name: "email" | "feed" | "web") =>
+    request<{ report: Record<string, any> }>(`/agents/${name}/run`, { method: "POST" }),
+  agentsStatus: () => request<{ agents: SubAgentStatus[] }>("/agents/status"),
+  webFeedback: (result_id: string, feedback: "useful" | "not_useful") =>
+    request<{ recorded: boolean }>("/agents/web/feedback", {
+      method: "POST",
+      body: JSON.stringify({ result_id, feedback }),
     }),
 
   // ── Jarvis orchestration (Sprint 2) ──

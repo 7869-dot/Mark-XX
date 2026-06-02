@@ -8,6 +8,17 @@ import {
 import { api, type ChatModeValue, type JarvisAction } from "@/lib/api";
 import { fadeUp, slideUp } from "@/lib/animations";
 import { pushToast } from "@/lib/toast";
+import { NeuralTypingIndicator } from "@/components/chat/NeuralTypingIndicator";
+
+// What Jarvis is "consulting" while it routes a turn to a sub-agent — surfaced
+// as a small badge so the user sees which sub-agent is working.
+const CONSULTING: Record<ChatModeValue, string> = {
+  default: "Jarvis is thinking…",
+  email: "checking your inbox…",
+  schedule: "checking your calendar…",
+  research: "checking the web scout…",
+  post: "drafting in your voice…",
+};
 
 const MODES: { id: Exclude<ChatModeValue, "default">; label: string; icon: React.ReactNode; placeholder: string }[] = [
   { id: "email", label: "Email", icon: <IconMail size={15} />, placeholder: "Who do you need to reach, and what do you want to say?" },
@@ -25,7 +36,7 @@ type Turn = {
   followUp?: string | null;
 };
 
-export function CommandChatbox() {
+export function CommandChatbox({ prefill }: { prefill?: string } = {}) {
   const [params] = useSearchParams();
   const [mode, setMode] = useState<ChatModeValue>("default");
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -42,6 +53,14 @@ export function CommandChatbox() {
       inputRef.current?.focus();
     }
   }, [params]);
+
+  // Action items from the briefing prefill the input (and focus it).
+  useEffect(() => {
+    if (prefill) {
+      setInput(prefill);
+      inputRef.current?.focus();
+    }
+  }, [prefill]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -141,9 +160,21 @@ export function CommandChatbox() {
           ))}
         </AnimatePresence>
         {sending && (
-          <div className="text-[12px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-data)" }}>
-            Jarvis is thinking…
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-2"
+          >
+            <NeuralTypingIndicator />
+            <motion.span
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+              className="text-[12px]"
+              style={{ color: "var(--text-muted)", fontFamily: "var(--font-data)" }}
+            >
+              {CONSULTING[mode]}
+            </motion.span>
+          </motion.div>
         )}
       </div>
 
