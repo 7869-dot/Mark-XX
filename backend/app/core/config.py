@@ -59,12 +59,29 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 30.0
 
     # ── Agent web access (Sprint 6) ──────────────────────────────────────────
-    # Live web search for grounded posts. Empty key -> deterministic stub
-    # results (dev/tests), so the feature works end-to-end with no external dep.
-    WEB_SEARCH_PROVIDER: str = "tavily"   # tavily | serpapi
+    # Live web search for grounded posts + the web scout. Default provider is
+    # "duckduckgo" — a FREE, no-API-key path that drives a local headless browser
+    # (Playwright) with an httpx+BeautifulSoup fallback (see services.local_browser).
+    # "tavily"/"serpapi" remain available for those who set a key. With USE_STUBS
+    # (dev/tests) every provider short-circuits to deterministic stubs, so the
+    # feature works end-to-end with no external dep and no browser install.
+    WEB_SEARCH_PROVIDER: str = "duckduckgo"   # duckduckgo (local, free) | tavily | serpapi
     TAVILY_API_KEY: str = ""
     SERPAPI_API_KEY: str = ""
     WEB_FETCH_TIMEOUT_SECONDS: float = 8.0
+
+    # ── Local headless browser (free search + scraping) ──────────────────────
+    # Run Chromium headless on this machine — no paid API. Falls back to a plain
+    # httpx+BS4 fetch when Playwright/Chromium isn't installed, then to stubs.
+    BROWSER_HEADLESS: bool = True
+    BROWSER_NAV_TIMEOUT_MS: int = 15000
+    # A realistic desktop UA so free engines don't serve a bot challenge.
+    WEB_USER_AGENT: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+    # Cap scraped page text fed into the agent's context (token budget).
+    WEB_SCRAPE_MAX_CHARS: int = 6000
     # Below this confidence a world-post is never auto-published (stays pending).
     POST_CONFIDENCE_THRESHOLD: float = 0.55
 

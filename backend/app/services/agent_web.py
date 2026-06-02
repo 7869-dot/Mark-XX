@@ -51,13 +51,36 @@ def _stub_search(query: str, max_results: int) -> list[dict]:
 
 def web_search(query: str, max_results: int = 4) -> list[dict]:
     """Return [{title, url, snippet}]. Falls back to deterministic stubs when no
-    provider key is set, so grounding works end-to-end offline. Never raises."""
+    provider key is set (or in stub mode), so grounding works end-to-end offline.
+    Never raises.
+
+    Provider "duckduckgo" (the default) needs NO API key — it drives a local
+    headless browser (services.local_browser) with an httpx+BS4 fallback.
+    """
     query = (query or "").strip()
     if not query:
         return []
-    provider = (settings.WEB_SEARCH_PROVIDER or "tavily").lower()
+    provider = (settings.WEB_SEARCH_PROVIDER or "duckduckgo").lower()
+
+    # Stub mode always short-circuits — keeps dev/tests hermetic + browser-free.
+    if settings.USE_STUBS:
+        return _stub_search(query, max_results)
+
+    # Free, no-key path: local headless browser.
+    if provider in ("duckduckgo", "ddg", "local", "browser"):
+        try:
+            from app.services.local_browser import local_search
+
+            out = local_search(query, max_results=max_results)
+            log_event(logger, "web_search", provider="duckduckgo", query_chars=len(query), results=len(out))
+            return out or _stub_search(query, max_results)
+        except Exception as exc:  # noqa: BLE001
+            log_event(logger, "web_search_failed", provider="duckduckgo", error=str(exc))
+            return _stub_search(query, max_results)
+
+    # Paid providers (only when a key is configured).
     key = settings.TAVILY_API_KEY if provider == "tavily" else settings.SERPAPI_API_KEY
-    if settings.USE_STUBS or not key:
+    if not key:
         return _stub_search(query, max_results)
     try:
         import httpx
@@ -233,6 +256,18 @@ def compose_grounded_post(db: Session, agent: Agent, topic: str) -> dict:
         "category": categorize(topic),
         "topic": topic,
     }
+
+
+def scrape(url: str) -> dict:
+    """Visit a URL with the local headless browser and return cleaned
+    {url, title, text, markdown}. Free, no API key. Never raises."""
+    try:
+        from app.services.local_browser import scrape_url
+
+        return scrape_url(url)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "scrape_failed", url=(url or "")[:120], error=str(exc))
+        return {"url": url, "title": "", "text": "", "markdown": "", "error": "unavailable"}
 
 
 def pick_topic(db: Session, agent: Agent) -> str | None:

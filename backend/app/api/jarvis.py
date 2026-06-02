@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.envelope import envelope
@@ -89,6 +89,28 @@ def run_feed_agent(request: Request, db: Session = Depends(get_db), user: User =
 @limiter.limit("20/minute")
 def run_web_agent(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return envelope({"report": web_agent.run_report(db, user)})
+
+
+class WebResearchIn(BaseModel):
+    query: str = Field(..., min_length=1, max_length=1000)
+    max_steps: int = 4
+
+
+@router.post("/agents/web/research")
+@limiter.limit("10/minute")
+def web_research_endpoint(
+    request: Request,
+    body: WebResearchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Deep web research via the web agent's local search→visit→synthesise loop
+    (free, no API key). Jarvis routes 'find me X' / 'research X' requests here.
+    Returns {answer, sources, steps, used_web}."""
+    from app.services.web_research import deep_research
+
+    result = deep_research(db, user, body.query.strip(), max_steps=max(1, min(6, body.max_steps)))
+    return envelope(result)
 
 
 @router.get("/agents/status")

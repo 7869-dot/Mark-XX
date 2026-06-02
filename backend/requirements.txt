@@ -19,3 +19,11 @@ google-api-python-client==2.149.0
 cryptography==44.0.0
 slowapi==0.1.9
 python-dotenv==1.0.1
+# Local, no-paid-API web search + scraping for the web agent (services.local_browser).
+# Playwright drives a headless Chromium installed on the host (run
+# `python -m playwright install chromium` after pip install). BeautifulSoup +
+# markdownify clean scraped HTML into agent-ready text/markdown. All imported
+# lazily, so the app still runs if these aren't installed (httpx+stub fallback).
+playwright==1.49.1
+beautifulsoup4==4.12.3
+markdownify==0.13.1
