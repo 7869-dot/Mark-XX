@@ -34,10 +34,11 @@ class AgentTaskResult(BaseModel):
 
 # ── Chat command modes (Sprint 3A) ───────────────────────────────────────────
 class ChatMode(str, enum.Enum):
+    AUTO = "auto"           # Jarvis classifies the task and delegates to a sub-agent
     DEFAULT = "default"     # open Jarvis conversation
     EMAIL = "email"         # routes to email agent
     SCHEDULE = "schedule"   # routes to scheduler agent
-    RESEARCH = "research"   # web search + synthesis
+    RESEARCH = "research"   # web search + synthesis (web agent)
     POST = "post"           # draft for the posting agent to queue
 
 
@@ -58,3 +59,6 @@ class JarvisChatResponse(BaseModel):
     mode: ChatMode
     action: JarvisAction | None = None
     follow_up: str | None = None
+    # When the user sends mode=AUTO, this is the sub-agent Jarvis delegated to
+    # (email | web | schedule | post | self). Lets the UI show the routing.
+    delegated_to: str | None = None

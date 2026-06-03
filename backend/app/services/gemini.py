@@ -302,6 +302,38 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             ),
         })
 
+    if response_format == "jarvis_route":
+        # Deterministic keyword routing so Jarvis delegation is testable offline.
+        # Match ONLY the user's message (the prompt's lane descriptions mention
+        # every lane name, so we must isolate the real input first).
+        m = re.search(r'user message:\s*"(.*?)"', prompt or "", re.IGNORECASE | re.DOTALL)
+        low = (m.group(1) if m else (prompt or "")).lower()
+        if any(k in low for k in ("email", "reply", "inbox", "respond to", "message back", "follow up")):
+            lane = "email"
+        elif any(k in low for k in ("schedule", "calendar", "meeting", "book ", "appointment", "call with")):
+            lane = "schedule"
+        elif any(k in low for k in ("post", "feed", "tweet", "share")):
+            lane = "post"
+        elif any(k in low for k in ("research", "find", "look up", "search", "scout", "web")):
+            lane = "web"
+        else:
+            lane = "self"
+        return json.dumps({"lane": lane})
+
+    if response_format == "web_relevance":
+        # Score the listed candidates so the web scout's LLM ranker works offline.
+        # Pull the "N. [cat] ..." indices out of the prompt and assign a spread
+        # of plausible relevance scores (highest first), with a generic summary.
+        idxs = [int(m) for m in re.findall(r"^\s*(\d+)\.", prompt or "", re.MULTILINE)]
+        out = []
+        for rank, i in enumerate(sorted(set(idxs))):
+            out.append({
+                "index": i,
+                "relevance": round(max(0.3, 0.9 - 0.05 * rank), 2),
+                "summary": "Relevant to your stated goals and interests.",
+            })
+        return json.dumps(out or [{"index": 0, "relevance": 0.6, "summary": "Relevant to your goals."}])
+
     if response_format == "jarvis_frame":
         return random.choice([
             "Done — drafted something that sounds like you. Check it before it goes.",

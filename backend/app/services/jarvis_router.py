@@ -48,11 +48,66 @@ def _frame(db: Session, jarvis: Agent | None, instruction: str, fallback: str) -
         return fallback
 
 
+# Lanes Jarvis can delegate a free-form task to. "self" = Jarvis answers directly.
+_DELEGATE_LANES = ("email", "web", "schedule", "post", "self")
+_LANE_TO_MODE = {
+    "email": ChatMode.EMAIL,
+    "web": ChatMode.RESEARCH,     # the web/research sub-agent
+    "schedule": ChatMode.SCHEDULE,
+    "post": ChatMode.POST,
+    "self": ChatMode.DEFAULT,
+}
+
+
+def classify_intent(db: Session, jarvis: Agent | None, message: str) -> str:
+    """Jarvis reads a free-form task and decides WHICH sub-agent owns it.
+
+    This is the manager's core job: receive a task, pick the right sub-agent.
+    Returns one of _DELEGATE_LANES. Falls back to 'self' on any failure so the
+    user always gets a reply. The stub returns a deterministic keyword route so
+    delegation is testable offline.
+    """
+    if not jarvis:
+        return "self"
+    try:
+        from app.services.gemini import generate_for_agent, extract_json
+
+        instruction = (
+            "You are Jarvis, the manager of three sub-agents. Read the user's "
+            "message and decide who should handle it:\n"
+            "- \"email\": writing/replying to an email or anything inbox-related\n"
+            "- \"web\": researching, finding, or looking something up on the web\n"
+            "- \"schedule\": booking, calendar, or meeting-time requests\n"
+            "- \"post\": drafting a social/feed post\n"
+            "- \"self\": none of the above — you should just respond yourself\n\n"
+            f"User message: \"{message}\"\n\n"
+            "Return ONLY valid JSON: {\"lane\": \"email|web|schedule|post|self\"}. "
+            "No preamble."
+        )
+        data = extract_json(generate_for_agent(db, jarvis, instruction, response_format="jarvis_route"))
+        lane = str(data.get("lane", "self")).strip().lower()
+        return lane if lane in _DELEGATE_LANES else "self"
+    except Exception:  # noqa: BLE001
+        return "self"
+
+
 def route_chat(db: Session, user, message: str, mode: ChatMode, context: dict | None = None) -> JarvisChatResponse:
     """Route one chat turn. Persists the exchange to ChatHistory (tagged with
-    mode) so it feeds the existing summary/personality pipeline."""
+    mode) so it feeds the existing summary/personality pipeline.
+
+    mode=AUTO is the manager flow: Jarvis classifies the task and delegates to
+    the correct sub-agent, then the resolved lane runs exactly as if the user
+    had picked that mode."""
     jarvis = _jarvis_agent(db, user.id)
     reply, action, follow_up = "", None, None
+    delegated_to = None
+
+    # AUTO: Jarvis itself decides which sub-agent owns the task.
+    if mode == ChatMode.AUTO:
+        lane = classify_intent(db, jarvis, message)
+        delegated_to = lane
+        mode = _LANE_TO_MODE[lane]
+        log_event(logger, "jarvis_delegated", user_id=user.id, lane=lane)
 
     if mode == ChatMode.DEFAULT:
         reply = _default_reply(db, jarvis, message)
@@ -139,8 +194,10 @@ def route_chat(db: Session, user, message: str, mode: ChatMode, context: dict | 
     db.add(ChatHistory(user_id=user.id, role="agent", content=reply, mode=mode.value))
     db.commit()
 
-    log_event(logger, "jarvis_chat", user_id=user.id, mode=mode.value, action=action.type if action else None)
-    return JarvisChatResponse(reply=reply, mode=mode, action=action, follow_up=follow_up)
+    log_event(logger, "jarvis_chat", user_id=user.id, mode=mode.value,
+              delegated_to=delegated_to, action=action.type if action else None)
+    return JarvisChatResponse(reply=reply, mode=mode, action=action, follow_up=follow_up,
+                              delegated_to=delegated_to)
 
 
 def _default_reply(db: Session, jarvis: Agent | None, message: str) -> str:

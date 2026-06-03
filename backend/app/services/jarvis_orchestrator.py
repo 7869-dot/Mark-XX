@@ -182,14 +182,23 @@ def wake_up(db: Session, user_id: str, *, force: bool = False) -> JarvisContext 
 
     cache.set(_cache_key(user_id), ctx, ttl_seconds=CACHE_TTL_SECONDS)
 
-    # Dispatch the email tasks Jarvis assigned (best-effort, async-safe: this is
+    # Dispatch the tasks Jarvis assigned to its sub-agents (best-effort: this is
     # already off the login hot path — the endpoint calls wake_up directly).
+    # Email tasks produce an approval-gated draft; web tasks trigger the scout to
+    # scan + persist fresh opportunities. Feed is never auto-dispatched.
     try:
         from app.services.email_agent import execute_task
+        from app.services import web_agent
 
+        dispatched_web = False
         for task in ctx.team_briefing:
             if task.agent_role == "email":
                 execute_task(db, task, user_id)
+            elif task.agent_role == "web" and not dispatched_web:
+                # Run the scout once per wake-up even if Jarvis assigned several
+                # web tasks — it scans all the user's active categories anyway.
+                web_agent.run_report(db, user)
+                dispatched_web = True
     except Exception as exc:  # noqa: BLE001
         log_event(logger, "jarvis_dispatch_failed", user_id=user_id, error=str(exc))
 
