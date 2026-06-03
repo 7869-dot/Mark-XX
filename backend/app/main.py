@@ -14,7 +14,7 @@ from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
     auth, agent, tasks, memory, system, integrations,
     onboarding, schedule, agents, a2a_inbox,
-    users, jarvis,
+    users, jarvis, email, web,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -191,6 +191,8 @@ app.include_router(agents.router)
 app.include_router(a2a_inbox.router)
 app.include_router(users.router)
 app.include_router(jarvis.router)
+app.include_router(email.router)
+app.include_router(web.router)
 
 
 @app.get("/")

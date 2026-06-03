@@ -62,3 +62,6 @@ class JarvisChatResponse(BaseModel):
     # When the user sends mode=AUTO, this is the sub-agent Jarvis delegated to
     # (email | web | schedule | post | self). Lets the UI show the routing.
     delegated_to: str | None = None
+    # Durable interests Jarvis captured from this message and saved to memory.
+    # Empty for most turns; lets the UI confirm "I'll keep an eye out for X".
+    remembered_interests: list[str] = []

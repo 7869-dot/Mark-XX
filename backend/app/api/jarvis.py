@@ -181,6 +181,56 @@ def jarvis_context(
     return envelope({"context": ctx.model_dump(mode="json")})
 
 
+# ── Mission-control reads (required canonical surface) ────────────────────────
+@router.get("/jarvis/briefing")
+@limiter.limit("20/minute")
+def jarvis_briefing(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The full session briefing: runs the three sub-agents and synthesises a
+    briefing + action items in the user's voice. On first login (Jarvis not yet
+    onboarded) returns the onboarding payload instead. Same engine as
+    /jarvis/session/start, exposed as the directive's canonical briefing read."""
+    return envelope(jarvis_orchestrator.run_session(db, user))
+
+
+@router.get("/jarvis/agents")
+def jarvis_agents(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The agent roster Jarvis orchestrates: Jarvis itself plus each sub-agent
+    with its last run, one-line summary, and status. Drives the status grid."""
+    runs = last_runs(db, user.id)
+    label = {"email_agent": "Email Agent", "web_agent": "Web Agent", "feed_agent": "Posting Agent"}
+    sub_agents = [
+        {
+            "key": name,
+            "name": label.get(name, name),
+            "last_run": row.ran_at.isoformat() if row else None,
+            "last_summary": row.report_summary if row else None,
+            "status": row.status if row else "idle",
+        }
+        for name, row in runs.items()
+    ]
+    return envelope({
+        "orchestrator": {"name": "Jarvis", "role": "orchestrator", "status": "active"},
+        "sub_agents": sub_agents,
+    })
+
+
+@router.get("/jarvis/drafts")
+def jarvis_drafts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """All pending agent drafts awaiting the user's approval (newest first) —
+    the same draft queue as /agents/drafts, under the canonical jarvis surface."""
+    rows = (
+        db.query(AgentTaskResult)
+        .filter(AgentTaskResult.user_id == user.id, AgentTaskResult.approved.is_(None))
+        .order_by(AgentTaskResult.created_at.desc())
+        .all()
+    )
+    return envelope({"items": [_draft_dict(r) for r in rows]})
+
+
 # ── Draft queue ──────────────────────────────────────────────────────────────
 def _draft_dict(r: AgentTaskResult) -> dict:
     return {

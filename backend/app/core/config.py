@@ -81,6 +81,18 @@ class Settings(BaseSettings):
     SERPAPI_API_KEY: str = ""
     WEB_FETCH_TIMEOUT_SECONDS: float = 12.0
 
+    # ── Autonomous opportunity scan (token control) ──────────────────────────
+    # The web scout runs in the background for onboarded users so Jarvis keeps
+    # finding opportunities while the user is offline. These caps are the token
+    # budget that stops it burning the LLM endlessly:
+    #   COOLDOWN_HOURS      — skip a user scanned within this window (cooldown).
+    #   MAX_USERS_PER_RUN   — hard ceiling on scans per sweep (daily budget).
+    # The scout already dedupes finds by URL and ranks by relevance, so a scan
+    # never re-summarises identical results.
+    OPPORTUNITY_SCAN_ENABLED: bool = True
+    OPPORTUNITY_SCAN_COOLDOWN_HOURS: float = 6.0
+    OPPORTUNITY_SCAN_MAX_USERS_PER_RUN: int = 50
+
     # ── Local headless browser (free search + scraping) ──────────────────────
     # Run Chromium headless on this machine — no paid API. Falls back to a plain
     # httpx+BS4 fetch when Playwright/Chromium isn't installed, then to stubs.

@@ -383,6 +383,60 @@ def classify_emails_job():
     _run("classify_emails", _do)
 
 
+def opportunity_scan_job():
+    """Autonomous web-scout sweep — finds opportunities for onboarded users while
+    they're offline. Token-budgeted: skips any user scanned within the cooldown
+    window and stops after MAX_USERS_PER_RUN scans per sweep. The scout itself
+    dedupes finds by URL and ranks by relevance, so nothing identical is
+    re-summarised. Disabled entirely via OPPORTUNITY_SCAN_ENABLED."""
+
+    def _do():
+        from app.core.config import settings
+        from app.models import User, UserProfile
+        from app.models.jarvis_profile import AgentRunLog
+        from app.services import web_agent
+        from app.services.agent_runs import WEB_AGENT
+
+        if not settings.OPPORTUNITY_SCAN_ENABLED:
+            return
+        cooldown = timedelta(hours=settings.OPPORTUNITY_SCAN_COOLDOWN_HOURS)
+        budget = max(1, settings.OPPORTUNITY_SCAN_MAX_USERS_PER_RUN)
+
+        db = SessionLocal()
+        scanned = 0
+        try:
+            # Only onboarded users have interests/goals worth scanning against.
+            onboarded = (
+                db.query(User)
+                .join(UserProfile, UserProfile.user_id == User.id)
+                .filter(UserProfile.onboarding_complete.is_(True))
+                .all()
+            )
+            for user in onboarded:
+                if scanned >= budget:
+                    log_event(logger, "opportunity_scan_budget_hit", budget=budget)
+                    break
+                # Cooldown: skip users whose scout ran within the window.
+                last = (
+                    db.query(AgentRunLog)
+                    .filter(AgentRunLog.user_id == user.id, AgentRunLog.agent_name == WEB_AGENT)
+                    .order_by(AgentRunLog.ran_at.desc())
+                    .first()
+                )
+                if last and last.ran_at and (datetime.utcnow() - last.ran_at) < cooldown:
+                    continue
+                try:
+                    web_agent.run_report(db, user)
+                    scanned += 1
+                except Exception as exc:  # noqa: BLE001
+                    log_event(logger, "opportunity_scan_user_failed", user_id=user.id, error=str(exc))
+            log_event(logger, "opportunity_scan_done", scanned=scanned, eligible=len(onboarded))
+        finally:
+            db.close()
+
+    _run("opportunity_scan", _do)
+
+
 def process_a2a_inbox_job():
     """Every 5 min — process unread A2A messages and generate auto-replies."""
 
@@ -429,6 +483,8 @@ def register_jobs(scheduler) -> None:
     scheduler.add_job(classify_emails_job, "interval", minutes=30, id="classify_emails", replace_existing=True)
     scheduler.add_job(process_a2a_inbox_job, "interval", minutes=5, id="process_a2a_inbox", replace_existing=True)
     scheduler.add_job(trim_activity_log_job, "cron", hour=2, minute=15, id="trim_activity_log", replace_existing=True)
+    # Autonomous opportunity scan — every 3h, token-budgeted (see config caps).
+    scheduler.add_job(opportunity_scan_job, "interval", hours=3, id="opportunity_scan", replace_existing=True)
     # Proactive agent behaviors (per-agent gated by scheduled_jobs).
     from app.scheduler.proactive_jobs import register_proactive_jobs
     register_proactive_jobs(scheduler)

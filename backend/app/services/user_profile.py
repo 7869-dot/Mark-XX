@@ -177,6 +177,70 @@ def apply_onboarding(db: Session, user: User, answers: dict) -> UserProfile:
     return profile
 
 
+# Conservative phrasings that signal a durable interest/goal worth remembering.
+# Captured offline (no LLM) so the manager's memory grows from plain chat even
+# without a live model. {topic} is the trailing clause we persist.
+_INTEREST_PATTERNS = (
+    r"\b(?:get|getting|become|becoming|be)\s+better\s+at\s+(?P<topic>.+)",
+    r"\bi(?:'m| am)?\s+(?:really\s+)?(?:interested\s+in|into)\s+(?P<topic>.+)",
+    r"\bi\s+want\s+to\s+(?:learn|master|understand|build)\s+(?P<topic>.+)",
+    r"\b(?:learning|studying|working\s+on)\s+(?P<topic>.+)",
+)
+
+
+def _clean_topic(raw: str) -> str:
+    """Trim a captured clause to a short, storable interest phrase."""
+    import re as _re
+
+    topic = (raw or "").strip().strip(".!?").strip()
+    # Cut at the first hard clause boundary so we keep the noun, not the essay.
+    topic = _re.split(r"[,.;]| because | so that | and then ", topic, maxsplit=1)[0].strip()
+    # Drop a leading article for a cleaner tag.
+    topic = _re.sub(r"^(?:the|a|an|my|some)\s+", "", topic, flags=_re.IGNORECASE).strip()
+    return topic[:80]
+
+
+def remember_signals(db: Session, user: User, message: str) -> list[str]:
+    """Mine a plain chat message for durable interests and persist new ones to the
+    profile (deduped, case-insensitive). Returns the interests newly added this
+    call. Conservative by design — only fires on explicit "want to learn / get
+    better at / interested in" phrasings, never on every message. Never raises.
+
+    This is the manager remembering what matters to the user so the web scout can
+    act on it later — real persistence, not a transient context window.
+    """
+    import re as _re
+
+    text = (message or "").strip()
+    if not text:
+        return []
+    try:
+        profile = get_or_create_profile(db, user)
+        existing = {str(i).strip().lower() for i in (profile.interests or [])}
+        added: list[str] = []
+        for pat in _INTEREST_PATTERNS:
+            m = _re.search(pat, text, flags=_re.IGNORECASE)
+            if not m:
+                continue
+            topic = _clean_topic(m.group("topic"))
+            if len(topic) < 3 or topic.lower() in existing or topic.lower() in {a.lower() for a in added}:
+                continue
+            added.append(topic)
+        if not added:
+            return []
+        # Cap stored interests so memory stays lightweight (most-recent kept).
+        merged = (list(profile.interests or []) + added)[-40:]
+        profile.interests = merged
+        profile.updated_at = datetime.utcnow()
+        db.commit()
+        log_event(logger, "interest_remembered", user_id=user.id, added=added)
+        return added
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log_event(logger, "interest_remember_failed", user_id=user.id, error=str(exc)[:200])
+        return []
+
+
 def active_categories(profile: UserProfile | None) -> list[str]:
     """Which web-scout categories to scan. All categories by default; narrowed to
     the user's opportunity_preferences when they set them."""

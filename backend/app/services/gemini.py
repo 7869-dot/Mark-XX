@@ -314,7 +314,13 @@ def _stub_response(prompt: str, response_format: str = "text") -> str:
             lane = "schedule"
         elif any(k in low for k in ("post", "feed", "tweet", "share")):
             lane = "post"
-        elif any(k in low for k in ("research", "find", "look up", "search", "scout", "web")):
+        elif any(k in low for k in (
+            "research", "find", "look up", "search", "scout", "web",
+            # Learning / skill-growth intent is the web scout's job: it surfaces
+            # courses, papers, communities, and tools for the topic.
+            "learn", "better at", "improve at", "study", "course", "get into",
+            "understand", "resources", "opportunit",
+        )):
             lane = "web"
         else:
             lane = "self"

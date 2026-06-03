@@ -98,9 +98,25 @@ def route_chat(db: Session, user, message: str, mode: ChatMode, context: dict | 
     mode=AUTO is the manager flow: Jarvis classifies the task and delegates to
     the correct sub-agent, then the resolved lane runs exactly as if the user
     had picked that mode."""
+    # Self-heal the team so Jarvis always has a body to delegate through — a user
+    # can hit chat before the login briefing has seeded the agents (or on a legacy
+    # account). Without this, delegation silently collapses to "self".
+    from app.services.agent_team import ensure_team
+
+    try:
+        ensure_team(db, user)
+    except Exception as exc:  # noqa: BLE001
+        log_event(logger, "route_chat_ensure_team_failed", user_id=user.id, error=str(exc))
+
     jarvis = _jarvis_agent(db, user.id)
     reply, action, follow_up = "", None, None
     delegated_to = None
+
+    # The manager remembers: persist any durable interest/goal the user voiced so
+    # the web scout can act on it later (the "Jarvis tracks your interests" loop).
+    from app.services import user_profile as profiles
+
+    remembered = profiles.remember_signals(db, user, message)
 
     # AUTO: Jarvis itself decides which sub-agent owns the task.
     if mode == ChatMode.AUTO:
@@ -195,9 +211,10 @@ def route_chat(db: Session, user, message: str, mode: ChatMode, context: dict | 
     db.commit()
 
     log_event(logger, "jarvis_chat", user_id=user.id, mode=mode.value,
-              delegated_to=delegated_to, action=action.type if action else None)
+              delegated_to=delegated_to, action=action.type if action else None,
+              remembered=remembered)
     return JarvisChatResponse(reply=reply, mode=mode, action=action, follow_up=follow_up,
-                              delegated_to=delegated_to)
+                              delegated_to=delegated_to, remembered_interests=remembered)
 
 
 def _default_reply(db: Session, jarvis: Agent | None, message: str) -> str:
