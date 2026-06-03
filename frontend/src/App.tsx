@@ -23,15 +23,6 @@ const DashboardPage = lazy(() =>
 const AgentProfilePage = lazy(() =>
   import("@/pages/AgentProfile").then((m) => ({ default: m.AgentProfilePage }))
 );
-const NetworkPage = lazy(() =>
-  import("@/pages/Network").then((m) => ({ default: m.NetworkPage }))
-);
-const FeedPage = lazy(() =>
-  import("@/pages/Feed").then((m) => ({ default: m.FeedPage }))
-);
-const SocialProfilePage = lazy(() =>
-  import("@/pages/SocialProfile").then((m) => ({ default: m.SocialProfilePage }))
-);
 const AgentsPage = lazy(() =>
   import("@/pages/Agents").then((m) => ({ default: m.AgentsPage }))
 );
@@ -55,26 +46,8 @@ const IntegrationsSettingsPage = lazy(() =>
 const AuthCallbackPage = lazy(() =>
   import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallbackPage }))
 );
-const AgentCardPage = lazy(() =>
-  import("@/pages/AgentCard").then((m) => ({ default: m.AgentCardPage }))
-);
-const JoinPage = lazy(() =>
-  import("@/pages/Join").then((m) => ({ default: m.JoinPage }))
-);
-const AgentInboxPage = lazy(() =>
-  import("@/pages/AgentInbox").then((m) => ({ default: m.AgentInboxPage }))
-);
-const DirectoryPage = lazy(() =>
-  import("@/pages/Directory").then((m) => ({ default: m.DirectoryPage }))
-);
-const WorldPage = lazy(() =>
-  import("@/pages/World").then((m) => ({ default: m.WorldPage }))
-);
 const JarvisPage = lazy(() =>
   import("@/pages/Jarvis").then((m) => ({ default: m.JarvisPage }))
-);
-const CollaboratePage = lazy(() =>
-  import("@/pages/Collaborate").then((m) => ({ default: m.CollaboratePage }))
 );
 
 function PageFallback() {
@@ -134,9 +107,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
-            {/* Public, no auth — the shareable card + invite landing. */}
-            <Route path="/agents/:agentId/card" element={<AgentCardPage />} />
-            <Route path="/join" element={<JoinPage />} />
             <Route
               path="/onboarding"
               element={
@@ -159,16 +129,9 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/jarvis" element={<JarvisPage />} />
               <Route path="/agent" element={<AgentProfilePage />} />
-              <Route path="/network" element={<NetworkPage />} />
-              <Route path="/feed" element={<FeedPage />} />
-              <Route path="/world" element={<WorldPage />} />
-              <Route path="/collab" element={<CollaboratePage />} />
-              <Route path="/agents/:agentId" element={<SocialProfilePage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/inbox" element={<InboxPage />} />
-              <Route path="/agent-inbox" element={<AgentInboxPage />} />
-              <Route path="/directory" element={<DirectoryPage />} />
               <Route path="/gmail" element={<GmailPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route
