@@ -28,23 +28,22 @@ class Settings(BaseSettings):
     #   LLM_PROVIDER: "gemini" (default) | "local" (any OpenAI-compatible server)
     #   LLM_MODEL:    model id passed to whichever provider is active
     LLM_PROVIDER: str = "gemini"
-    # Lite tier — the cheap default for email parsing, post generation, chat.
-    LLM_MODEL: str = "gemini-3.1-flash-lite"
+    # Single authoritative model for the whole app (product-owner mandate).
+    # Every task tier (light/heavy/ultra) resolves to this one primary model.
+    LLM_MODEL: str = "gemini-3.1-flash"
 
     # ── Tiered models (mixture by task) ──────────────────────────────────────
-    # Routed per task by llm_gateway._model_for(): light tasks (email parsing,
-    # post generation, plain chat) -> LIGHT; relevance ranking / research /
-    # grounded synthesis -> HEAVY; Jarvis's multi-step orchestration briefing ->
-    # ULTRA. Current model IDs (per the product owner, June 2026):
-    #   lite  = gemini-3.1-flash-lite   (LIGHT default)
-    #   flash = gemini-3.5-flash        (HEAVY default)
-    #   pro   = gemini-3.1-pro-preview  (ULTRA default)
-    # IMPORTANT: these are NOT verifiable from here — set the authoritative IDs
-    # via env. validate_models() probes them at boot and logs llm_model_invalid
-    # for any bad id; the LLM_FALLBACK_MODELS chain auto-recovers a bad primary.
-    LLM_MODEL_LIGHT: str = ""               # empty -> falls back to LLM_MODEL
-    LLM_MODEL_HEAVY: str = "gemini-3.5-flash"
-    LLM_MODEL_ULTRA: str = "gemini-3.1-pro-preview"
+    # The task router (llm_gateway._model_for()) still distinguishes light/heavy/
+    # ultra task classes, but per the mandate every tier points at the SAME
+    # primary model id. This keeps the routing seam in place (so a future tier
+    # split is a one-line config change) while guaranteeing exactly one model is
+    # used at runtime. The LLM_FALLBACK_MODELS chain is deliberately retained:
+    # it only ever retries *real* Gemini models on a hard error (e.g. a 404 on a
+    # renamed id) and NEVER returns a faked/canned response, so it protects
+    # availability without violating the single-model intent.
+    LLM_MODEL_LIGHT: str = "gemini-3.1-flash"
+    LLM_MODEL_HEAVY: str = "gemini-3.1-flash"
+    LLM_MODEL_ULTRA: str = "gemini-3.1-flash"
 
     # Fallback chain: when the primary model errors (e.g. a 404 on a renamed
     # model), llm_gateway retries these in order, then raises a hard error —
