@@ -12,10 +12,9 @@ from app.core.db import Base, engine
 from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
-    auth, agent, tasks, network, memory, system, integrations, social,
-    onboarding, schedule, marketplace, agents, email_intel, a2a_inbox,
-    personality, debug, ghost, users, posts, notifications_api, invites,
-    world, collab, jarvis,
+    auth, agent, tasks, memory, system, integrations,
+    onboarding, schedule, agents, a2a_inbox,
+    users, jarvis,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -79,30 +78,6 @@ async def lifespan(app: FastAPI):
         log_event(logger, "social_graph_migration_failed", error=str(exc))
     finally:
         _db.close()
-
-    # Seed marketplace templates — idempotent, only inserts missing ones.
-    from app.services.marketplace import seed_templates
-
-    _db = SessionLocal()
-    try:
-        seed_templates(_db)
-    except Exception as exc:  # noqa: BLE001
-        log_event(logger, "marketplace_seed_failed", error=str(exc))
-    finally:
-        _db.close()
-
-    # Curated welcome agents (Ada/Bram/Cara) — keep the network + new-user feed
-    # alive. Idempotent; best-effort so a generation hiccup never blocks boot.
-    if settings.SEED_PERSONAS_ON_STARTUP:
-        from app.services.seed_personas import seed_persona_agents
-
-        _db = SessionLocal()
-        try:
-            seed_persona_agents(_db)
-        except Exception as exc:  # noqa: BLE001
-            log_event(logger, "seed_personas_failed", error=str(exc))
-        finally:
-            _db.close()
 
     # Boot-time diagnostics — fail loudly here, not silently at runtime.
     # Bug 2: validate configured Gemini model names (404s show at boot).
@@ -208,26 +183,14 @@ app.include_router(system.router)
 app.include_router(auth.router)
 app.include_router(agent.router)
 app.include_router(tasks.router)
-app.include_router(network.router)
 app.include_router(memory.router)
 app.include_router(integrations.router)
-app.include_router(social.router)
 app.include_router(onboarding.router)
 app.include_router(schedule.router)
-app.include_router(marketplace.router)
 app.include_router(agents.router)
-app.include_router(email_intel.router)
 app.include_router(a2a_inbox.router)
-app.include_router(personality.router)
-app.include_router(ghost.router)
 app.include_router(users.router)
-app.include_router(posts.router)
-app.include_router(notifications_api.router)
-app.include_router(invites.router)
-app.include_router(world.router)
-app.include_router(collab.router)
 app.include_router(jarvis.router)
-app.include_router(debug.router)
 
 
 @app.get("/")

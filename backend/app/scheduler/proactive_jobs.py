@@ -369,123 +369,13 @@ def inbox_monitor_sweep():
     _run("inbox_monitor_sweep", _do)
 
 
-# ── Auto post ───────────────────────────────────────────────────────────────
-def auto_post_sweep():
-    """9am — for every agent set to daily/weekly auto_post, generate one post
-    in the agent's voice using its bio + recent post history. Skipped silently
-    on a weekly schedule any day except Monday."""
-
-    def _do():
-        db = SessionLocal()
-        try:
-            try:
-                agents = enabled_agents_for(db, JOB_AUTO_POST)
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    f"[auto_post_sweep] enabled_agents lookup failed: {exc}",
-                    exc_info=True,
-                )
-                return
-            today = datetime.utcnow()
-            for agent in agents:
-                try:
-                    if not auto_post_should_run_today(
-                        agent.auto_post_schedule or "off", today
-                    ):
-                        continue
-                    recent = (
-                        db.query(AgentPost)
-                        .filter(AgentPost.agent_id == agent.id)
-                        .order_by(AgentPost.created_at.desc())
-                        .limit(5)
-                        .all()
-                    )
-                    recent_text = (
-                        "\n".join(f"- {p.content}" for p in recent)
-                        if recent
-                        else "(no prior posts)"
-                    )
-                    instruction = (
-                        "Write one fresh post (2-4 sentences, under 500 chars) for "
-                        "your feed, in your own voice. The topic should reflect "
-                        "your bio and your user's recent interests. Don't repeat "
-                        "anything from your last posts. No hashtags, no quotes "
-                        f"around the post.\n\nYour last posts:\n{recent_text}"
-                    )
-                    text = (generate_for_agent(db, agent, instruction) or "").strip()
-                    if not text:
-                        continue
-                    _post(db, agent, text)
-                    mark_ran(db, agent.id, JOB_AUTO_POST)
-                    log_event(logger, "auto_post_posted", agent_id=agent.id)
-                except Exception as exc:  # noqa: BLE001
-                    db.rollback()
-                    _handle_agent_failure(
-                        db, agent, JOB_AUTO_POST, "auto_post_sweep", exc,
-                    )
-        finally:
-            db.close()
-
-    _run("auto_post_sweep", _do)
-
-
-# ── Ghost posting ────────────────────────────────────────────────────────────
-def ghost_post_sweep():
-    """Every 4-6h (jittered) — for every agent that opted into ghost posting,
-    generate one post in the owner's voice grounded in their memory, rotating
-    through the four categories. Enforces a per-agent minimum gap so a delayed or
-    coalesced run can't double-post.
-
-    Same resilience contract as the other sweeps: per-agent try/except, error
-    stamped onto the scheduled_jobs row, Gemini transients degrade to a notice.
-    """
-    from app.services.ghost_post_engine import generate_ghost_post
-
-    def _do():
-        db = SessionLocal()
-        try:
-            try:
-                agents = enabled_agents_for(db, JOB_GHOST_POST)
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    f"[ghost_post_sweep] enabled_agents lookup failed: {exc}",
-                    exc_info=True,
-                )
-                return
-            gap_cutoff = datetime.utcnow() - timedelta(hours=GHOST_MIN_GAP_HOURS)
-            for agent in agents:
-                try:
-                    if not agent.user:
-                        continue
-                    last = (
-                        db.query(GhostPost.generated_at)
-                        .filter(GhostPost.agent_id == agent.id)
-                        .order_by(GhostPost.generated_at.desc())
-                        .first()
-                    )
-                    if last and last[0] and last[0] > gap_cutoff:
-                        continue  # posted too recently — let it breathe
-                    ghost = generate_ghost_post(db, agent)
-                    if ghost:
-                        mark_ran(db, agent.id, JOB_GHOST_POST)
-                        log_event(
-                            logger, "ghost_post_posted",
-                            agent_id=agent.id, post_type=ghost.post_type,
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    db.rollback()
-                    _handle_agent_failure(
-                        db, agent, JOB_GHOST_POST, "ghost_post_sweep", exc,
-                    )
-        finally:
-            db.close()
-
-    _run("ghost_post_sweep", _do)
-
-
 def register_proactive_jobs(scheduler) -> None:
     """Wire the proactive sweeps into APScheduler. Idempotent — every job is
-    added with replace_existing so restart is safe."""
+    added with replace_existing so restart is safe.
+
+    Scope post-overhaul: the email/calendar briefing behaviors only. The public
+    auto-post and ghost-post sweeps were removed with the social feed surface.
+    """
     scheduler.add_job(
         morning_briefing_post, "cron", hour=8, minute=0,
         id="morning_briefing_post", replace_existing=True,
@@ -493,14 +383,4 @@ def register_proactive_jobs(scheduler) -> None:
     scheduler.add_job(
         inbox_monitor_sweep, "interval", minutes=30,
         id="inbox_monitor_sweep", replace_existing=True,
-    )
-    scheduler.add_job(
-        auto_post_sweep, "cron", hour=9, minute=0,
-        id="auto_post_sweep", replace_existing=True,
-    )
-    # Ghost posting — base 5h interval with ±1h jitter (=> 4-6h) so agents don't
-    # all post at the same synchronized instant.
-    scheduler.add_job(
-        ghost_post_sweep, "interval", hours=5, jitter=3600,
-        id="ghost_post_sweep", replace_existing=True,
     )
