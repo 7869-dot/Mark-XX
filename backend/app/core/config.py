@@ -45,10 +45,12 @@ class Settings(BaseSettings):
     LLM_MODEL_HEAVY: str = "gemini-3.1-flash"
     LLM_MODEL_ULTRA: str = "gemini-3.1-flash"
 
-    # Fallback chain: when the primary model errors (e.g. a 404 on a renamed
-    # model), llm_gateway retries these in order, then raises a hard error —
-    # it NEVER returns a faked/canned response. Comma-separated, env-overridable.
-    LLM_FALLBACK_MODELS: str = "gemini-2.5-flash,gemini-2.0-flash"
+    # Fallback chain: DISABLED by mandate. Exactly one model (gemini-3.1-flash)
+    # is allowed at runtime — no alternative models, no silent substitution. When
+    # the primary model errors, llm_gateway raises a hard error that surfaces as
+    # an honest "couldn't reach the model" message; it NEVER swaps in another
+    # model and NEVER returns a faked/canned response.
+    LLM_FALLBACK_MODELS: str = ""
 
     def model_light(self) -> str:
         return self.LLM_MODEL_LIGHT or self.LLM_MODEL

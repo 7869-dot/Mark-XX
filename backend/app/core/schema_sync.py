@@ -101,6 +101,12 @@ def run_schema_sync(engine: Engine) -> None:
         # Existing rows default to "feed" so the historical primary agent stays
         # the one public-facing poster — zero behavior change on upgrade.
         _add_column(engine, "agents", "role", "VARCHAR(16)", default_sql="'feed'")
+        # is_primary gates "exactly one primary agent per user". A DB created
+        # before the multi-agent split has no such column, which 500s every
+        # Agent query (incl. /jarvis/chat's jarvis-agent lookup). Backfill TRUE:
+        # a legacy single-agent row IS that user's primary. The partial unique
+        # index ships via create_all on fresh DBs only, so this ALTER is safe.
+        _add_column(engine, "agents", "is_primary", "BOOLEAN", default_sql="true")
 
         # --- Jarvis overhaul: role rename posting->feed, wildcard->web ---
         # One-time, idempotent data migration. The role *values* changed; this
