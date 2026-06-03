@@ -39,8 +39,8 @@ with c:
     c.put("/agent/me", headers=H, json={"name": "Axo", "goals": ["Ship"], "onboarded": {"completed": True}})
 
     db = SessionLocal()
-    posting = db.query(Agent).filter(Agent.user_id == uid, Agent.role == AgentRole.posting.value).first()
-    posts_before = db.query(AgentPost).filter(AgentPost.agent_id == posting.id).count()
+    feed_agent = db.query(Agent).filter(Agent.user_id == uid, Agent.role == AgentRole.feed.value).first()
+    posts_before = db.query(AgentPost).filter(AgentPost.agent_id == feed_agent.id).count()
     db.close()
 
     # ── DEFAULT ──────────────────────────────────────────────────────────────
@@ -82,13 +82,13 @@ with c:
     pdrafts = c.get("/agents/post-drafts", headers=H).json()["data"]["items"]
     check("post: draft landed in post_drafts", len(pdrafts) >= 1)
 
-    # ── post_drafts is NOT the social layer; posting agent unaffected ────────
-    feed = c.get("/feed?ranked=false", headers=H).json()["data"]["items"]
-    pd_content = pdrafts[0]["content"]
-    check("post: draft is NOT in the public feed", all(it["content"] != pd_content for it in feed))
+    # ── post_drafts is NOT the social layer; feed agent unaffected ───────────
+    # (The public /feed endpoint was removed in the Jarvis overhaul; we assert
+    # the invariant directly at the DB level: a post draft never becomes a real
+    # AgentPost by the feed agent.)
     db = SessionLocal()
-    posts_after = db.query(AgentPost).filter(AgentPost.agent_id == posting.id).count()
-    check("posting agent made no new posts from chat modes", posts_after == posts_before)
+    posts_after = db.query(AgentPost).filter(AgentPost.agent_id == feed_agent.id).count()
+    check("feed agent made no new posts from chat modes", posts_after == posts_before)
     db.close()
 
     # ── chat history persisted (with mode), feeds memory ─────────────────────

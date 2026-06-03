@@ -58,9 +58,12 @@ with c:
 
     # ── Layer 1 — chat history window ────────────────────────────────────────
     # Drive 25 user messages so we comfortably exceed the 20-turn window.
+    # Jarvis chat (DEFAULT mode) persists a user + agent turn per call to
+    # ChatHistory, which is what the memory pipeline reads.
     for i in range(25):
-        c.post("/chat/message", headers=H,
-               json={"message": f"Turn {i}: anything new on the Series A?"})
+        c.post("/jarvis/chat", headers=H,
+               json={"message": f"Turn {i}: anything new on the Series A?",
+                     "mode": "default"})
 
     db = SessionLocal()
     try:

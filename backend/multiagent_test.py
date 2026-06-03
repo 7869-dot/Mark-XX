@@ -45,12 +45,12 @@ with c:
     team = c.get("/agents/team", headers=H).json()["data"]["items"]
     roles = {a["role"] for a in team}
     check("team: four agents seeded at signup", len(team) == 4)
-    check("team: roles are posting/jarvis/email/wildcard",
-          roles == {"posting", "jarvis", "email", "wildcard"})
-    check("team: exactly one posting agent", sum(a["role"] == "posting" for a in team) == 1)
-    check("team: only the posting agent is primary",
-          [a["is_primary"] for a in team if a["role"] == "posting"] == [True]
-          and all(not a["is_primary"] for a in team if a["role"] != "posting"))
+    check("team: roles are feed/jarvis/email/web",
+          roles == {"feed", "jarvis", "email", "web"})
+    check("team: exactly one feed agent", sum(a["role"] == "feed" for a in team) == 1)
+    check("team: only the feed agent is primary",
+          [a["is_primary"] for a in team if a["role"] == "feed"] == [True]
+          and all(not a["is_primary"] for a in team if a["role"] != "feed"))
 
     # ── /agents/mine is posting-only (team members are hidden here) ───────────
     r = c.get("/agents/mine", headers=H).json()["data"]
@@ -118,7 +118,7 @@ with c:
     check("mine: down to 1 agent after sibling delete", len(r["items"]) == 1)
 
     # Now deleting the SOLE remaining (primary) agent works because no siblings.
-    # (We don't actually delete it because /chat/message will self-heal — but
+    # (We don't actually delete it because /agent/me will self-heal — but
     # we prove the policy.)
     r = c.delete(f"/agents/{side_id}", headers=H).json()
     check("delete: primary deletes when it's the only agent",
@@ -172,38 +172,23 @@ with c:
     check("ownership: cannot delete another user's agent (403)",
           r.status_code == 403)
 
-    # ── X-Agent-Id routing on /chat/message ───────────────────────────────────
-    # Spin up a second agent with a distinct system_prompt and verify the
-    # chat route uses ITS context when X-Agent-Id is set. We can't read the
-    # generated reply deterministically without Gemini, but we CAN assert
-    # the route returns the active agent's id in the response envelope.
-    r = c.post("/agents", headers=H, json={
-        "name": "Voice Sentinel", "bio": "Speaks like a sentinel.",
-    }).json()["data"]
-    sentinel_id = r["id"]
+    # ── Jarvis chat surface ───────────────────────────────────────────────────
+    # Post-overhaul the user only ever talks to Jarvis (no per-agent X-Agent-Id
+    # chat routing). Verify the single chat surface replies and is auth-guarded.
+    r = c.post("/jarvis/chat", headers=H,
+               json={"message": "what should I focus on?", "mode": "default"})
+    check("jarvis chat: returns 200 with a reply",
+          r.status_code == 200 and bool(r.json()["data"]["reply"]))
 
-    r = c.post("/chat/message", headers={**H, "X-Agent-Id": sentinel_id},
-               json={"message": "hello"}).json()
-    check("X-Agent-Id: chat response envelope carries the chosen agent_id",
-          r["meta"]["agent_id"] == sentinel_id)
+    # AUTO mode: Jarvis classifies the task and reports which sub-agent it picked.
+    r = c.post("/jarvis/chat", headers=H,
+               json={"message": "reply to the investor email", "mode": "auto"}).json()["data"]
+    check("jarvis chat: AUTO delegates to a sub-agent",
+          r["delegated_to"] in {"email", "web", "schedule", "post", "self"})
 
-    # No header => primary.
-    r = c.post("/chat/message", headers=H, json={"message": "hi"}).json()
-    check("X-Agent-Id absent: chat falls back to primary",
-          r["meta"]["agent_id"] == new_primary_id)
-
-    # Invalid header => 403 (not silent fallback).
-    r = c.post("/chat/message",
-               headers={**H, "X-Agent-Id": "00000000-0000-0000-0000-000000000000"},
-               json={"message": "hi"})
-    check("X-Agent-Id invalid: 403, not silent fallback", r.status_code == 403)
-
-    # Another user's agent id => 403.
-    other_primary = c.get("/agent/me", headers=H2).json()["data"]["id"]
-    r = c.post("/chat/message",
-               headers={**H, "X-Agent-Id": other_primary},
-               json={"message": "hi"})
-    check("X-Agent-Id from another user => 403", r.status_code == 403)
+    # Auth guard — no token => 401, never a silent fallback.
+    r = c.post("/jarvis/chat", json={"message": "hi", "mode": "default"})
+    check("jarvis chat: requires auth (401)", r.status_code == 401)
 
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 raise SystemExit(0 if ok else 1)
