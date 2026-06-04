@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconLayoutSidebarRightExpand, IconLayoutSidebarRightCollapse, IconLogout } from "@tabler/icons-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IconLogout } from "@tabler/icons-react";
 import {
   api,
   webStreamUrl,
@@ -11,18 +11,28 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { pushToast } from "@/lib/toast";
-import { buildGreeting } from "@/lib/briefing";
 import { OnboardingCard } from "@/components/jarvis/OnboardingCard";
-import { JarvisChat, type ChatPrefill } from "@/components/home/JarvisChat";
+import { JarvisChat } from "@/components/home/JarvisChat";
 import { AgentPanel, type PanelTab } from "@/components/home/AgentPanel";
 import { AgentStatusDots } from "@/components/home/AgentStatusDots";
+import { BriefingCard } from "@/components/home/BriefingCard";
+import { AgentReportRow } from "@/components/home/AgentReportRow";
+import "@/styles/home.css";
 
 type Phase = "loading" | "onboarding" | "ready" | "error";
+type Ready = Extract<JarvisSession, { onboarding: false }>;
+
+function salutation(name?: string): string {
+  const h = new Date().getHours();
+  const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  const first = (name || "").trim().split(" ")[0];
+  return `${part}${first ? `, ${first}` : ""}.`;
+}
 
 export function HomePage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [phase, setPhase] = useState<Phase>("loading");
-  const [session, setSession] = useState<Extract<JarvisSession, { onboarding: false }> | null>(null);
+  const [session, setSession] = useState<Ready | null>(null);
   const [onboarding, setOnboarding] = useState<Extract<JarvisSession, { onboarding: true }> | null>(null);
 
   const [drafts, setDrafts] = useState<AgentDraft[]>([]);
@@ -35,21 +45,17 @@ export function HomePage() {
   const esRef = useRef<EventSource | null>(null);
 
   const [tab, setTab] = useState<PanelTab>("tasks");
-  const [prefill, setPrefill] = useState<ChatPrefill | undefined>();
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number; draftId?: string } | undefined>();
 
-  // Loading UX: "Jarvis is thinking…" after 8s, a timeout note after 15s.
   const [slow, setSlow] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const timers = useRef<number[]>([]);
-
   const clearTimers = () => {
     timers.current.forEach((t) => clearTimeout(t));
     timers.current = [];
   };
 
-  // Web findings stream in over SSE so cards animate in as they arrive. Falls
-  // back to a one-shot fetch if the EventSource errors before any result.
+  // Web findings stream in over SSE so cards animate in as they arrive.
   const streamFindings = useCallback(() => {
     esRef.current?.close();
     setFindings([]);
@@ -82,9 +88,7 @@ export function HomePage() {
     es.onerror = () => {
       es.close();
       setFindingsLoading(false);
-      if (!received) {
-        api.webFindings().then((r) => setFindings(r.items)).catch(() => {});
-      }
+      if (!received) api.webFindings().then((r) => setFindings(r.items)).catch(() => {});
     };
   }, []);
 
@@ -122,11 +126,7 @@ export function HomePage() {
     }
   }, [loadSidePanels]);
 
-  // Fire the session start exactly once, and only AFTER auth bootstrap settles
-  // (useAuth.getMe triggers any needed token refresh). Gating here means
-  // /jarvis/session/start always sends a fresh token — no startup 401 race.
-  // The ref also defends against React StrictMode's double-mount (which would
-  // otherwise call session/start twice and race the team creation).
+  // Fire session start once, only after auth bootstrap settles (fresh token).
   const didInit = useRef(false);
   useEffect(() => {
     if (authLoading || didInit.current) return;
@@ -135,11 +135,6 @@ export function HomePage() {
     return clearTimers;
   }, [authLoading, loadSession]);
 
-  const greeting = useMemo(() => {
-    if (!session) return "";
-    return buildGreeting(session, user?.name || "", drafts.length);
-  }, [session, user, drafts.length]);
-
   // ── Cross-panel actions ──────────────────────────────────────────────────
   const onAskJarvis = useCallback((d: AgentDraft) => {
     setPrefill({
@@ -147,7 +142,7 @@ export function HomePage() {
       nonce: Date.now(),
       draftId: d.id,
     });
-    setMobilePanelOpen(false); // surface the chat on mobile
+    setTab("emails");
   }, []);
 
   const onResolveDraft = useCallback((id: string) => {
@@ -168,7 +163,7 @@ export function HomePage() {
     }
   }, []);
 
-  // Surface the Gmail OAuth round-trip result and close the SSE stream on unmount.
+  // Surface the Gmail OAuth round-trip and close the SSE stream on unmount.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const g = p.get("gmail");
@@ -182,109 +177,72 @@ export function HomePage() {
     return () => esRef.current?.close();
   }, []);
 
-  // ── Render states ────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const nav = (
+    <nav className="axo-nav">
+      <span className="axo-logo">Axolot</span>
+      <div className="axo-nav-spacer" />
+      <AgentStatusDots agents={status} />
+      <button className="axo-nav-icon" onClick={signOut} title="Sign out" aria-label="Sign out">
+        <IconLogout size={16} />
+      </button>
+    </nav>
+  );
+
+  let body: React.ReactNode;
   if (phase === "onboarding" && onboarding) {
-    return (
-      <Shell status={status} signOut={signOut}>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <OnboardingCard
-            greeting={onboarding.greeting}
-            questions={onboarding.questions}
-            onComplete={loadSession}
-          />
-        </div>
-      </Shell>
+    body = (
+      <div className="axo-center" style={{ overflowY: "auto" }}>
+        <OnboardingCard greeting={onboarding.greeting} questions={onboarding.questions} onComplete={loadSession} />
+      </div>
     );
-  }
-
-  if (phase === "loading") {
-    return (
-      <Shell status={status} signOut={signOut}>
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <span
-            className="text-sm animate-pulse"
-            style={{ color: "var(--text-secondary)", fontFamily: "var(--font-data)" }}
-          >
-            {slow ? "Jarvis is thinking…" : "Starting your session…"}
-          </span>
-          {timedOut && (
-            <div className="flex flex-col items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                This is taking longer than expected.
-              </span>
-              <button onClick={loadSession} className="btn-primary text-xs px-3 py-1.5">
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-      </Shell>
+  } else if (phase === "loading") {
+    body = (
+      <div className="axo-center">
+        <span className="axo-thinking">{slow ? "Jarvis is thinking…" : "Starting your session…"}</span>
+        {timedOut && (
+          <>
+            <span className="axo-subtle">This is taking longer than expected.</span>
+            <button className="axo-btn axo-btn-primary" onClick={loadSession}>Retry</button>
+          </>
+        )}
+      </div>
     );
-  }
-
-  if (phase === "error" || !session) {
-    return (
-      <Shell status={status} signOut={signOut}>
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            Jarvis couldn't start your session.
-          </span>
-          <button onClick={loadSession} className="btn-primary text-xs px-3 py-1.5">
-            Try again
-          </button>
-        </div>
-      </Shell>
+  } else if (phase === "error" || !session) {
+    body = (
+      <div className="axo-center">
+        <span className="axo-subtle">Jarvis couldn't start your session.</span>
+        <button className="axo-btn axo-btn-primary" onClick={loadSession}>Try again</button>
+      </div>
     );
-  }
-
-  const tasks = session.action_items || [];
-
-  return (
-    <Shell status={status} signOut={signOut}>
-      {/* Desktop: split view. Mobile: chat on top, panel as a toggle below. */}
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-        {/* Left — Jarvis chat (primary) */}
-        <section
-          className="min-h-0 flex-1 lg:flex-[1.4] flex flex-col"
-          style={{ borderRight: "1px solid var(--border)" }}
-        >
-          <JarvisChat
-            greeting={greeting}
-            prefill={prefill}
-            onSwitchTab={(t) => {
-              setTab(t);
-              setMobilePanelOpen(true);
-            }}
-            onDraftRevised={onDraftRevised}
-          />
-        </section>
-
-        {/* Mobile accordion toggle */}
-        <button
-          onClick={() => setMobilePanelOpen((o) => !o)}
-          className="lg:hidden flex items-center justify-center gap-2 py-2 text-xs shrink-0"
-          style={{
-            borderTop: "1px solid var(--border)",
-            color: "var(--text-secondary)",
-            fontFamily: "var(--font-data)",
-          }}
-        >
-          {mobilePanelOpen ? (
-            <IconLayoutSidebarRightCollapse size={15} />
-          ) : (
-            <IconLayoutSidebarRightExpand size={15} />
-          )}
-          Agent work ({tasks.length + drafts.length + findings.length})
-        </button>
-
-        {/* Right — agent work panel (secondary) */}
-        <aside
-          className={`${mobilePanelOpen ? "flex" : "hidden"} lg:flex min-h-0 flex-1 lg:flex-none lg:w-[380px] xl:w-[420px] flex-col`}
-        >
+  } else {
+    const webCount = Math.max(findings.length, session.reports?.web?.top_finds?.length ?? 0);
+    const urgentCount = emailReport?.counts?.urgent ?? 0;
+    const briefingSlot = (
+      <>
+        <BriefingCard
+          greeting={salutation(user?.name)}
+          items={session.action_items || []}
+          webCount={webCount}
+          urgentCount={urgentCount}
+          focusPrompt={session.focus_prompt}
+        />
+        <AgentReportRow emailReport={emailReport} webCount={webCount} />
+      </>
+    );
+    body = (
+      <div className="axo-main">
+        <JarvisChat
+          briefingSlot={briefingSlot}
+          prefill={prefill}
+          onSwitchTab={setTab}
+          onDraftRevised={onDraftRevised}
+        />
+        <div className="axo-right">
           <AgentPanel
             tab={tab}
             onTab={setTab}
-            tasks={tasks}
+            tasks={session.action_items || []}
             drafts={drafts}
             draftsLoading={draftsLoading}
             findings={findings}
@@ -295,47 +253,15 @@ export function HomePage() {
             onAskJarvis={onAskJarvis}
             onResolveDraft={onResolveDraft}
           />
-        </aside>
-      </div>
-    </Shell>
-  );
-}
-
-/** App frame: header (JARVIS + status + sign out) and the content slot. */
-function Shell({
-  status,
-  signOut,
-  children,
-}: {
-  status: SubAgentStatus[];
-  signOut: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="h-screen flex flex-col" style={{ background: "var(--bg-base)" }}>
-      <header
-        className="flex items-center justify-between px-4 py-3 shrink-0"
-        style={{ borderBottom: "1px solid var(--border)" }}
-      >
-        <span
-          className="text-sm tracking-[0.2em]"
-          style={{ fontFamily: "var(--font-data)", color: "var(--text-primary)" }}
-        >
-          JARVIS
-        </span>
-        <div className="flex items-center gap-4">
-          <AgentStatusDots agents={status} />
-          <button
-            onClick={signOut}
-            title="Sign out"
-            className="inline-flex items-center"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            <IconLogout size={16} />
-          </button>
         </div>
-      </header>
-      {children}
+      </div>
+    );
+  }
+
+  return (
+    <div className="axo-shell">
+      {nav}
+      {body}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconSend, IconArrowRight } from "@tabler/icons-react";
 import { api, type JarvisAction } from "@/lib/api";
 import { Markdown } from "@/components/chat/Markdown";
@@ -13,7 +13,6 @@ type Turn = {
   panelHint?: PanelTab | null;
 };
 
-/** Which panel an action/reply points the user toward, for the "see panel" link. */
 function panelHintFor(action: JarvisAction | null, reply: string): PanelTab | null {
   if (action?.type === "draft_email") return "emails";
   if (action?.type === "research_result") return "web";
@@ -24,12 +23,12 @@ function panelHintFor(action: JarvisAction | null, reply: string): PanelTab | nu
 }
 
 export function JarvisChat({
-  greeting,
+  briefingSlot,
   prefill,
   onSwitchTab,
   onDraftRevised,
 }: {
-  greeting: string;
+  briefingSlot: ReactNode;
   prefill?: ChatPrefill;
   onSwitchTab: (t: PanelTab) => void;
   onDraftRevised: (draftId: string, content: string) => void;
@@ -42,7 +41,6 @@ export function JarvisChat({
   const inputRef = useRef<HTMLInputElement>(null);
   const contextDraftId = useRef<string | undefined>(undefined);
 
-  // Ask-Jarvis prefill from an email card → fill input, focus, remember context.
   useEffect(() => {
     if (prefill) {
       setInput(prefill.text);
@@ -68,19 +66,13 @@ export function JarvisChat({
     try {
       const ctx = draftId ? { draft_id: draftId } : undefined;
       const r = await api.jarvisChat(text, "default", ctx);
-      // If Jarvis revised a draft, push the new text back to the email card.
       if (draftId && r.action?.type === "draft_email") {
         const revised = (r.action.payload?.draft_content as string) || "";
         if (revised) onDraftRevised(draftId, revised);
       }
       setTurns((t) => [
         ...t,
-        {
-          id: crypto.randomUUID(),
-          role: "jarvis",
-          text: r.reply,
-          panelHint: panelHintFor(r.action, r.reply),
-        },
+        { id: crypto.randomUUID(), role: "jarvis", text: r.reply, panelHint: panelHintFor(r.action, r.reply) },
       ]);
     } catch {
       setTurns((t) => [
@@ -96,39 +88,24 @@ export function JarvisChat({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0" style={{ background: "var(--bg-base)" }}>
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-5 space-y-4">
-        {/* Pinned greeting / briefing */}
-        <div className="flex justify-start">
-          <div
-            className="max-w-[85%] rounded-2xl px-4 py-3 text-[14px]"
-            style={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
-          >
-            <Markdown source={greeting} />
-          </div>
+    <div className="axo-jarvis-pane">
+      <div className="axo-briefing-area" ref={scrollRef}>
+        <div className="axo-jarvis-header">
+          <div className="axo-jarvis-avatar">J</div>
+          <span className="axo-jarvis-name">Jarvis · just now</span>
         </div>
 
+        {briefingSlot}
+
         {turns.map((t) => (
-          <div key={t.id} className={`flex ${t.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className="max-w-[85%]">
-              <div
-                className="rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed"
-                style={
-                  t.role === "user"
-                    ? { background: "var(--accent-primary)", color: "#fff" }
-                    : { background: "var(--bg-surface)", color: "var(--text-primary)" }
-                }
-              >
+          <div key={t.id} className={`axo-turn ${t.role}`}>
+            <div>
+              <div className={`axo-bubble ${t.role}`}>
                 {t.role === "jarvis" ? <Markdown source={t.text} /> : t.text}
               </div>
               {t.panelHint && (
-                <button
-                  onClick={() => onSwitchTab(t.panelHint!)}
-                  className="mt-1.5 text-[12px] inline-flex items-center gap-1"
-                  style={{ color: "var(--accent-primary)" }}
-                >
-                  → see {t.panelHint === "emails" ? "Emails" : "Web Intel"}
-                  <IconArrowRight size={12} />
+                <button className="axo-see-panel" onClick={() => onSwitchTab(t.panelHint!)}>
+                  → see {t.panelHint === "emails" ? "Emails" : "Web"} <IconArrowRight size={12} />
                 </button>
               )}
             </div>
@@ -136,36 +113,23 @@ export function JarvisChat({
         ))}
 
         {sending && (
-          <div className="flex items-center gap-2">
-            <span
-              className="text-[12px] animate-pulse"
-              style={{ color: "var(--text-secondary)", fontFamily: "var(--font-data)" }}
-            >
-              {slow ? "Still working on it — this is taking longer than usual…" : "Jarvis is thinking…"}
-            </span>
+          <div className="axo-thinking">
+            {slow ? "Still working on it — this is taking longer than usual…" : "Jarvis is thinking…"}
           </div>
         )}
       </div>
 
-      <div
-        className="px-4 py-3 flex items-center gap-2 shrink-0"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <div className="axo-chat-input-wrap">
         <input
           ref={inputRef}
+          className="axo-chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Talk to Jarvis…"
-          className="input flex-1 text-sm"
+          placeholder="Tell Jarvis what to do…"
         />
-        <button
-          onClick={send}
-          disabled={!input.trim() || sending}
-          className="btn-primary inline-flex items-center px-3 py-2"
-          style={{ opacity: !input.trim() || sending ? 0.5 : 1 }}
-        >
-          <IconSend size={16} />
+        <button className="axo-chat-send" onClick={send} disabled={!input.trim() || sending} aria-label="Send">
+          <IconSend size={15} />
         </button>
       </div>
     </div>

@@ -1,53 +1,40 @@
 import type { SubAgentStatus } from "@/lib/api";
 
-/** Minimal agent health indicators (top right). Green = last run ok, grey =
- *  idle, red = failed. Jarvis (the orchestrator) is always live while the app
- *  is open; Web + Email come from GET /agents/status. Fetched on load only. */
-const LABELS: Record<string, string> = {
-  jarvis: "Jarvis",
-  web_agent: "Web",
-  email_agent: "Email",
-};
-
-function dotColor(status: string): string {
+/** Nav agent pills — identity colour per agent (Jarvis green, Web blue, Email
+ *  purple), overridden to red on a failed last run, dimmed when idle. Jarvis is
+ *  the always-live orchestrator. Fetched on load (no live polling). */
+function dotClass(identity: string, status?: string): string {
   const s = (status || "").toLowerCase();
-  if (s === "ok" || s === "active" || s === "success") return "var(--accent-green)";
-  if (s === "error" || s === "failed") return "var(--accent-red)";
-  return "var(--text-tertiary)"; // idle / unknown
+  if (s === "error" || s === "failed") return "axo-dot axo-dot-red";
+  if (s === "" || s === "idle") return "axo-dot axo-dot-idle";
+  return `axo-dot ${identity}`;
 }
 
-function Dot({ name, status, title }: { name: string; status: string; title: string }) {
-  return (
-    <div
-      className="flex items-center gap-1.5"
-      title={title}
-      style={{ fontFamily: "var(--font-data)" }}
-    >
-      <span
-        className="inline-block rounded-full"
-        style={{ width: 7, height: 7, background: dotColor(status) }}
-      />
-      <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-        {LABELS[name] || name}
-      </span>
-    </div>
-  );
+function title(name: string, a?: SubAgentStatus): string {
+  if (!a) return `${name} · idle`;
+  const when = a.last_run ? new Date(a.last_run).toLocaleString() : "never";
+  return `${name} · ${a.status} · last run ${when}`;
 }
 
 export function AgentStatusDots({ agents }: { agents: SubAgentStatus[] }) {
   const by = new Map(agents.map((a) => [a.agent_name, a]));
-  const email = by.get("email_agent");
   const web = by.get("web_agent");
-  const fmt = (a?: SubAgentStatus) =>
-    a?.last_run
-      ? `last run ${new Date(a.last_run).toLocaleString()} · ${a.status}`
-      : "idle";
+  const email = by.get("email_agent");
 
   return (
-    <div className="flex items-center gap-3.5">
-      <Dot name="jarvis" status="ok" title="Jarvis · orchestrator (live)" />
-      <Dot name="web_agent" status={web?.status || "idle"} title={`Web Agent · ${fmt(web)}`} />
-      <Dot name="email_agent" status={email?.status || "idle"} title={`Email Agent · ${fmt(email)}`} />
-    </div>
+    <>
+      <span className="axo-pill" title="Jarvis · orchestrator (live)">
+        <span className="axo-dot axo-dot-green" />
+        Jarvis
+      </span>
+      <span className="axo-pill" title={title("Web Agent", web)}>
+        <span className={dotClass("axo-dot-blue", web?.status)} />
+        Web
+      </span>
+      <span className="axo-pill" title={title("Email Agent", email)}>
+        <span className={dotClass("axo-dot-purple", email?.status)} />
+        Email
+      </span>
+    </>
   );
 }
