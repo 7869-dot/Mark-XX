@@ -8,20 +8,20 @@
  * forward to integrations settings preserving query params for the toast.
  */
 import { useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
 
   useEffect(() => {
+    // Both the login grant and the Gmail/Calendar grant funnel back here; in the
+    // PA-core app there's a single destination once a session token exists.
     if (localStorage.getItem("axolot_token")) {
-      navigate("/dashboard", { replace: true });
+      navigate("/app", { replace: true });
       return;
     }
-    const qs = params.toString();
-    navigate(`/settings/integrations${qs ? `?${qs}` : ""}`, { replace: true });
-  }, [navigate, params]);
+    navigate("/", { replace: true });
+  }, [navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

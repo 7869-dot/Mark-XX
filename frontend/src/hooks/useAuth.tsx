@@ -7,32 +7,27 @@ import {
   type ReactNode,
 } from "react";
 import { api, clearTokens } from "@/lib/api";
-import type { Agent } from "@/types";
+import type { User } from "@/types";
 
 type AuthContextValue = {
-  agent: Agent | null;
+  user: User | null;
   loading: boolean;
-  /** True once the user has finished the 3-step onboarding flow. */
-  onboardingComplete: boolean;
   signOut: () => void;
-  refreshAgent: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [agent, setAgent] = useState<Agent | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
-  const refreshAgent = useCallback(async () => {
+  const refreshUser = useCallback(async () => {
     try {
-      const a = await api.getAgent(true); // silent — 401 here is expected pre-login
-      setAgent(a);
-      setOnboardingComplete(!!a.onboarding_complete);
+      const u = await api.getMe(true); // silent — 401 here is expected pre-login
+      setUser(u);
     } catch {
-      setAgent(null);
-      setOnboardingComplete(false);
+      setUser(null);
     }
   }, []);
 
@@ -42,20 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    refreshAgent().finally(() => setLoading(false));
-  }, [refreshAgent]);
+    refreshUser().finally(() => setLoading(false));
+  }, [refreshUser]);
 
   const signOut = useCallback(() => {
     clearTokens();
-    setAgent(null);
-    setOnboardingComplete(false);
+    setUser(null);
     window.location.href = "/";
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ agent, loading, onboardingComplete, signOut, refreshAgent }}
-    >
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

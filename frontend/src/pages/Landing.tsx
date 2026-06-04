@@ -47,7 +47,7 @@ export function LandingPage() {
 
   useEffect(() => {
     if (localStorage.getItem("axolot_token")) {
-      navigate("/dashboard");
+      navigate("/app");
       return;
     }
     // Surface OAuth failure codes set by the backend callback.
