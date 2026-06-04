@@ -27,3 +27,7 @@ python-dotenv==1.0.1
 playwright==1.49.1
 beautifulsoup4==4.12.3
 markdownify==0.13.1
+# Tavily — agent-grade search API used as the PRIMARY web-search provider when
+# TAVILY_API_KEY is set (no browser needed; reliable on Render). Imported lazily
+# in services.local_browser so the app still runs without the package or a key.
+tavily-python==0.5.0

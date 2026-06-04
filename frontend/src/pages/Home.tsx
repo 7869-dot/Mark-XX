@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconLayoutSidebarRightExpand, IconLayoutSidebarRightCollapse, IconLogout } from "@tabler/icons-react";
 import {
   api,
+  webStreamUrl,
   type AgentDraft,
+  type EmailReport,
   type JarvisSession,
   type SubAgentStatus,
   type WebFind,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { pushToast } from "@/lib/toast";
 import { buildGreeting } from "@/lib/briefing";
 import { OnboardingCard } from "@/components/jarvis/OnboardingCard";
 import { JarvisChat, type ChatPrefill } from "@/components/home/JarvisChat";
@@ -27,6 +30,9 @@ export function HomePage() {
   const [findings, setFindings] = useState<WebFind[]>([]);
   const [findingsLoading, setFindingsLoading] = useState(true);
   const [status, setStatus] = useState<SubAgentStatus[]>([]);
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+  const [emailReport, setEmailReport] = useState<EmailReport | null>(null);
+  const esRef = useRef<EventSource | null>(null);
 
   const [tab, setTab] = useState<PanelTab>("tasks");
   const [prefill, setPrefill] = useState<ChatPrefill | undefined>();
@@ -42,24 +48,54 @@ export function HomePage() {
     timers.current = [];
   };
 
-  const loadSidePanels = useCallback(async () => {
-    setDraftsLoading(true);
+  // Web findings stream in over SSE so cards animate in as they arrive. Falls
+  // back to a one-shot fetch if the EventSource errors before any result.
+  const streamFindings = useCallback(() => {
+    esRef.current?.close();
+    setFindings([]);
     setFindingsLoading(true);
-    api
-      .agentDrafts()
-      .then((r) => setDrafts(r.items))
-      .catch(() => setDrafts([]))
-      .finally(() => setDraftsLoading(false));
-    api
-      .webFindings()
-      .then((r) => setFindings(r.items))
-      .catch(() => setFindings([]))
-      .finally(() => setFindingsLoading(false));
-    api
-      .agentsStatus()
-      .then((r) => setStatus(r.agents))
-      .catch(() => setStatus([]));
+    let received = false;
+    let es: EventSource;
+    try {
+      es = new EventSource(webStreamUrl());
+    } catch {
+      setFindingsLoading(false);
+      return;
+    }
+    esRef.current = es;
+    es.onmessage = (ev) => {
+      let d: WebFind & { done?: boolean };
+      try {
+        d = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (d.done) {
+        setFindingsLoading(false);
+        es.close();
+        return;
+      }
+      received = true;
+      setFindingsLoading(false);
+      setFindings((prev) => (prev.some((f) => f.id === d.id) ? prev : [...prev, d]));
+    };
+    es.onerror = () => {
+      es.close();
+      setFindingsLoading(false);
+      if (!received) {
+        api.webFindings().then((r) => setFindings(r.items)).catch(() => {});
+      }
+    };
   }, []);
+
+  const loadSidePanels = useCallback(() => {
+    setDraftsLoading(true);
+    api.agentDrafts().then((r) => setDrafts(r.items)).catch(() => setDrafts([])).finally(() => setDraftsLoading(false));
+    api.agentsStatus().then((r) => setStatus(r.agents)).catch(() => setStatus([]));
+    api.integrationsStatus().then((r) => setGmailConnected(r.gmail)).catch(() => setGmailConnected(null));
+    api.emailSummary().then((r) => setEmailReport(r)).catch(() => setEmailReport(null));
+    streamFindings();
+  }, [streamFindings]);
 
   const loadSession = useCallback(async () => {
     setPhase("loading");
@@ -121,6 +157,29 @@ export function HomePage() {
   const onDraftRevised = useCallback((id: string, content: string) => {
     setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, draft_content: content } : d)));
     setTab("emails");
+  }, []);
+
+  const onConnectGmail = useCallback(async () => {
+    try {
+      const { authorization_url } = await api.gmailConnect();
+      window.location.href = authorization_url; // backend redirects to /app?gmail=connected
+    } catch {
+      pushToast("Couldn't start Gmail connect — try again.");
+    }
+  }, []);
+
+  // Surface the Gmail OAuth round-trip result and close the SSE stream on unmount.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const g = p.get("gmail");
+    if (g) {
+      pushToast(g === "connected" ? "Gmail connected." : "Gmail connection failed.",
+        g === "connected" ? "success" : "error");
+      p.delete("gmail");
+      const qs = p.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
+    return () => esRef.current?.close();
   }, []);
 
   // ── Render states ────────────────────────────────────────────────────────
@@ -230,6 +289,9 @@ export function HomePage() {
             draftsLoading={draftsLoading}
             findings={findings}
             findingsLoading={findingsLoading}
+            gmailConnected={gmailConnected}
+            emailReport={emailReport}
+            onConnectGmail={onConnectGmail}
             onAskJarvis={onAskJarvis}
             onResolveDraft={onResolveDraft}
           />

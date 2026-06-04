@@ -97,7 +97,7 @@ def google_callback(
     auth `code` for access+refresh tokens → store them Fernet-encrypted on the
     user row → bounce back to the integrations settings page.
     """
-    err_url = f"{settings.FRONTEND_URL}/settings/integrations?error=true"
+    err_url = f"{settings.FRONTEND_URL}/app?gmail=error"
 
     # 0. The user denied consent (or Google errored) — nothing to exchange.
     if error:
@@ -143,7 +143,7 @@ def google_callback(
         user_id=user_id, gmail=user.gmail_connected, calendar=user.calendar_connected,
     )
     return RedirectResponse(
-        url=f"{settings.FRONTEND_URL}/settings/integrations?connected=google"
+        url=f"{settings.FRONTEND_URL}/app?gmail=connected"
     )
 
 

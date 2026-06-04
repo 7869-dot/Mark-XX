@@ -10,6 +10,9 @@ function hostname(u: string): string {
 }
 
 export function WebIntelCard({ find }: { find: WebFind }) {
+  const host = hostname(find.url);
+  const score = Math.max(0, Math.min(1, Number(find.relevance_score) || 0));
+
   return (
     <a
       href={find.url}
@@ -31,7 +34,19 @@ export function WebIntelCard({ find }: { find: WebFind }) {
       <p className="text-[13px] mt-1.5 leading-relaxed line-clamp-2" style={{ color: "var(--text-secondary)" }}>
         {find.summary}
       </p>
-      <div className="flex items-center gap-2 mt-2">
+
+      <div className="flex items-center gap-2 mt-2.5">
+        <img
+          src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
+          alt=""
+          width={14}
+          height={14}
+          className="rounded-sm shrink-0"
+          loading="lazy"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+          }}
+        />
         {find.category && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded"
@@ -48,7 +63,26 @@ export function WebIntelCard({ find }: { find: WebFind }) {
           className="text-[11px] truncate"
           style={{ color: "var(--accent-primary)", fontFamily: "var(--font-data)" }}
         >
-          {hostname(find.url)}
+          {host}
+        </span>
+      </div>
+
+      {/* Relevance score bar */}
+      <div className="flex items-center gap-2 mt-2">
+        <div
+          className="h-1 flex-1 rounded-full overflow-hidden"
+          style={{ background: "var(--bg-elevated)" }}
+        >
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${Math.round(score * 100)}%`, background: "var(--accent-primary)" }}
+          />
+        </div>
+        <span
+          className="text-[10px] shrink-0"
+          style={{ color: "var(--text-tertiary)", fontFamily: "var(--font-data)" }}
+        >
+          {Math.round(score * 100)}%
         </span>
       </div>
     </a>

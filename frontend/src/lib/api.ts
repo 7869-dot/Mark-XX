@@ -218,6 +218,23 @@ export type JarvisChatResponse = {
   follow_up: string | null;
 };
 
+export type EmailItem = { subject: string; from: string; suggested_reply?: string };
+
+export type EmailReport = {
+  connected: boolean;
+  urgent: EmailItem[];
+  important: EmailItem[];
+  low: EmailItem[];
+  action_required: EmailItem[];
+  counts: { urgent: number; important: number; low: number };
+};
+
+export type IntegrationsStatus = {
+  gmail: boolean;
+  calendar: boolean;
+  google: { connected: boolean; reason: string | null };
+};
+
 /** Approval-gated agent draft (email). GET /agents/drafts. */
 export type AgentDraft = {
   id: string;
@@ -264,4 +281,17 @@ export const api = {
   agentsStatus: () => request<{ agents: SubAgentStatus[] }>("/agents/status"),
   webFindings: () =>
     request<{ items: WebFind[]; categories: string[] }>("/web/findings"),
+
+  // Gmail / Google integration
+  integrationsStatus: () => request<IntegrationsStatus>("/integrations/status"),
+  gmailConnect: () =>
+    request<{ authorization_url: string }>("/integrations/gmail/connect", { method: "POST" }),
+  emailSummary: () => request<EmailReport>("/email/summary"),
 };
+
+/** EventSource URL for the live web-findings stream. The token rides in the
+ *  query string because EventSource can't set an Authorization header. */
+export function webStreamUrl(): string {
+  const t = getToken() || "";
+  return `${API_BASE}/web/stream?token=${encodeURIComponent(t)}`;
+}

@@ -287,6 +287,29 @@ def _search_ddg_api(query: str, max_results: int) -> list[dict]:
     return out[:max_results]
 
 
+def _search_tavily(query: str, max_results: int) -> list[dict]:
+    """Tavily — agent-grade search API (no browser). PRIMARY provider when
+    TAVILY_API_KEY is set; the reliable path on Render where Chromium is absent.
+    Returns Tavily `results` mapped to our {title,url,snippet} shape."""
+    key = (settings.TAVILY_API_KEY or "").strip()
+    if not key:
+        return []
+    from tavily import TavilyClient  # lazy — optional dependency
+
+    resp = TavilyClient(api_key=key).search(query, max_results=max_results)
+    out = [
+        {
+            "title": r.get("title", "") or r.get("url", ""),
+            "url": r.get("url", ""),
+            "snippet": (r.get("content", "") or "")[:300],
+            "score": r.get("score"),
+        }
+        for r in (resp.get("results") or [])
+        if r.get("url")
+    ]
+    return out[:max_results]
+
+
 def _serpapi_key() -> str:
     """Optional paid escape hatch — empty unless SERPAPI_KEY is set in the env."""
     import os
@@ -318,11 +341,12 @@ def _search_serpapi(query: str, max_results: int) -> list[dict]:
 
 
 def local_search(query: str, max_results: int = 5) -> list[dict]:
-    """Free web search. Returns [{title,url,snippet}]. Tries, in order:
+    """Web search. Returns [{title,url,snippet}]. Tries, in order:
+    Tavily (only if TAVILY_API_KEY is set — agent-grade, no browser) ->
     Playwright (headless Chromium, skipped when Chromium is known-missing) ->
     httpx DuckDuckGo /html/ SERP -> httpx DuckDuckGo Lite -> DuckDuckGo
     Instant-Answer JSON API -> SerpAPI (only if SERPAPI_KEY is set) -> [].
-    Free and no API key by default. Logs which provider returned results.
+    Free and no API key past Tavily. Logs which provider returned results.
     Never raises."""
     global _PLAYWRIGHT_MISSING
     query = (query or "").strip()
@@ -330,6 +354,8 @@ def local_search(query: str, max_results: int = 5) -> list[dict]:
         return []
 
     engines: list[tuple] = []
+    if (settings.TAVILY_API_KEY or "").strip():
+        engines.append(("tavily", _search_tavily))  # primary when configured
     if not _PLAYWRIGHT_MISSING:
         engines.append(("playwright", _search_playwright))
     engines.append(("httpx_html", _search_html))
