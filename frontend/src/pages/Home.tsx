@@ -17,7 +17,7 @@ import { AgentStatusDots } from "@/components/home/AgentStatusDots";
 type Phase = "loading" | "onboarding" | "ready" | "error";
 
 export function HomePage() {
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<Extract<JarvisSession, { onboarding: false }> | null>(null);
   const [onboarding, setOnboarding] = useState<Extract<JarvisSession, { onboarding: true }> | null>(null);
@@ -86,16 +86,18 @@ export function HomePage() {
     }
   }, [loadSidePanels]);
 
-  // Fire the session start exactly once. /jarvis/session/start runs the sub-
-  // agents (expensive) and seeds the team on first login — React StrictMode's
-  // double-mount would otherwise call it twice and race the team creation.
+  // Fire the session start exactly once, and only AFTER auth bootstrap settles
+  // (useAuth.getMe triggers any needed token refresh). Gating here means
+  // /jarvis/session/start always sends a fresh token — no startup 401 race.
+  // The ref also defends against React StrictMode's double-mount (which would
+  // otherwise call session/start twice and race the team creation).
   const didInit = useRef(false);
   useEffect(() => {
-    if (didInit.current) return;
+    if (authLoading || didInit.current) return;
     didInit.current = true;
     loadSession();
     return clearTimers;
-  }, [loadSession]);
+  }, [authLoading, loadSession]);
 
   const greeting = useMemo(() => {
     if (!session) return "";

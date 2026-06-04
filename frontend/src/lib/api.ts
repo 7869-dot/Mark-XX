@@ -100,6 +100,12 @@ async function request<T>(
   init: RequestInit & { silent?: boolean } = {}
 ): Promise<T> {
   const { silent, ...fetchInit } = init;
+  // If another request already kicked off a token refresh, wait for it so this
+  // request sends with the fresh token instead of racing it into a 401. This
+  // collapses the initial page-load burst into a single refresh cycle.
+  if (refreshInFlight && !path.startsWith("/auth/")) {
+    await refreshInFlight;
+  }
   let res: Response;
   try {
     res = await rawRequest(path, fetchInit, getToken());

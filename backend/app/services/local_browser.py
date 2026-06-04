@@ -164,15 +164,58 @@ def _parse_lite(html: str, max_results: int) -> list[dict]:
     return out
 
 
+def _parse_html(html: str, max_results: int) -> list[dict]:
+    """Parse the DuckDuckGo /html/ SERP layout into [{title,url,snippet}].
+    Real organic results live in `a.result__a`, snippets in `.result__snippet`."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    out: list[dict] = []
+    for res in soup.select("div.result, div.web-result"):
+        a = res.select_one("a.result__a")
+        if not a:
+            continue
+        url = _decode_ddg_href(a.get("href", ""))
+        if not url.startswith("http"):
+            continue
+        snip_el = res.select_one(".result__snippet")
+        snip = snip_el.get_text(" ", strip=True) if snip_el else ""
+        out.append({"title": a.get_text(strip=True), "url": url, "snippet": snip[:300]})
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def _search_html(query: str, max_results: int) -> list[dict]:
+    """DuckDuckGo /html/ over plain httpx — a real SERP (unlike the Instant-Answer
+    API), and the primary no-browser path. Lite frequently 202s from datacenter
+    IPs while /html/ still returns parseable organic results."""
+    import httpx
+
+    resp = httpx.post(
+        DDG_HTML, data={"q": query}, headers=_headers(),
+        timeout=settings.WEB_FETCH_TIMEOUT_SECONDS, follow_redirects=True,
+    )
+    if resp.status_code == 202 or not resp.text.strip():
+        raise RuntimeError(f"ddg_html_empty (status={resp.status_code})")
+    resp.raise_for_status()
+    if _looks_blocked(resp.text):
+        raise RuntimeError("ddg_blocked")
+    return _parse_html(resp.text, max_results)
+
+
 def _search_httpx(query: str, max_results: int) -> list[dict]:
-    """DuckDuckGo Lite over plain httpx — no JS, far more scrape-friendly than the
-    /html/ endpoint and the path that works best from cloud/server IPs."""
+    """DuckDuckGo Lite over plain httpx — no JS. Often 202s (no body) from cloud
+    IPs; we surface that as a failure so the caller falls through to the next
+    engine instead of treating an empty 202 as 'zero results'."""
     import httpx
 
     resp = httpx.post(
         DDG_LITE, data={"q": query}, headers=_headers(),
         timeout=settings.WEB_FETCH_TIMEOUT_SECONDS, follow_redirects=True,
     )
+    if resp.status_code == 202 or not resp.text.strip():
+        raise RuntimeError(f"ddg_lite_empty (status={resp.status_code})")
     resp.raise_for_status()
     if _looks_blocked(resp.text):
         raise RuntimeError("ddg_blocked")
@@ -244,11 +287,43 @@ def _search_ddg_api(query: str, max_results: int) -> list[dict]:
     return out[:max_results]
 
 
+def _serpapi_key() -> str:
+    """Optional paid escape hatch — empty unless SERPAPI_KEY is set in the env."""
+    import os
+
+    return (os.environ.get("SERPAPI_KEY") or "").strip()
+
+
+def _search_serpapi(query: str, max_results: int) -> list[dict]:
+    """SerpAPI fallback, used ONLY when SERPAPI_KEY is configured (never required).
+    Last resort when every free DuckDuckGo path is blocked from the host IP."""
+    import httpx
+
+    key = _serpapi_key()
+    if not key:
+        return []
+    resp = httpx.get(
+        "https://serpapi.com/search.json",
+        params={"q": query, "api_key": key, "num": max_results, "engine": "google"},
+        timeout=settings.WEB_FETCH_TIMEOUT_SECONDS,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    out = [
+        {"title": r.get("title", ""), "url": r.get("link", ""), "snippet": (r.get("snippet", "") or "")[:300]}
+        for r in (data.get("organic_results") or [])
+        if r.get("link")
+    ]
+    return out[:max_results]
+
+
 def local_search(query: str, max_results: int = 5) -> list[dict]:
     """Free web search. Returns [{title,url,snippet}]. Tries, in order:
     Playwright (headless Chromium, skipped when Chromium is known-missing) ->
-    httpx DuckDuckGo Lite -> DuckDuckGo Instant-Answer JSON API -> []. All free,
-    no API key, no paid provider. Never raises."""
+    httpx DuckDuckGo /html/ SERP -> httpx DuckDuckGo Lite -> DuckDuckGo
+    Instant-Answer JSON API -> SerpAPI (only if SERPAPI_KEY is set) -> [].
+    Free and no API key by default. Logs which provider returned results.
+    Never raises."""
     global _PLAYWRIGHT_MISSING
     query = (query or "").strip()
     if not query:
@@ -257,8 +332,11 @@ def local_search(query: str, max_results: int = 5) -> list[dict]:
     engines: list[tuple] = []
     if not _PLAYWRIGHT_MISSING:
         engines.append(("playwright", _search_playwright))
+    engines.append(("httpx_html", _search_html))
     engines.append(("httpx_lite", _search_httpx))
     engines.append(("ddg_api", _search_ddg_api))
+    if _serpapi_key():
+        engines.append(("serpapi", _search_serpapi))
 
     for name, fn in engines:
         try:
@@ -266,6 +344,7 @@ def local_search(query: str, max_results: int = 5) -> list[dict]:
             if results:
                 log_event(logger, "local_search_ok", engine=name, query_chars=len(query), results=len(results))
                 return results
+            log_event(logger, "local_search_no_results", engine=name, query_chars=len(query))
         except Exception as exc:  # noqa: BLE001
             msg = str(exc)
             if name == "playwright" and _is_browser_missing(msg):
@@ -273,7 +352,7 @@ def local_search(query: str, max_results: int = 5) -> list[dict]:
                 log_event(logger, "playwright_disabled", reason="chromium_not_installed")
             log_event(logger, "local_search_failed", engine=name, error=msg[:160])
     log_event(logger, "local_search_empty", query_chars=len(query),
-              playwright=not _PLAYWRIGHT_MISSING)
+              playwright=not _PLAYWRIGHT_MISSING, serpapi=bool(_serpapi_key()))
     return []
 
 
