@@ -40,6 +40,9 @@ def categorize(topic: str) -> str:
 
 # ── Web search ───────────────────────────────────────────────────────────────
 def _stub_search(query: str, max_results: int) -> list[dict]:
+    """Deterministic offline results — ONLY for USE_STUBS dev/test runs so the
+    suite stays hermetic. NEVER used in live mode: real agents return real URLs
+    or nothing, they never paste fabricated example.com links."""
     base = query.strip().title() or "The Topic"
     samples = [
         {"title": f"{base}: what changed this week", "url": f"https://news.example.com/{query.replace(' ', '-')}-update", "snippet": f"A concise rundown of the latest developments in {query}."},
@@ -50,31 +53,33 @@ def _stub_search(query: str, max_results: int) -> list[dict]:
 
 
 def web_search(query: str, max_results: int = 4) -> list[dict]:
-    """Return [{title, url, snippet}]. Falls back to deterministic stubs in stub
-    mode (or when search yields nothing), so grounding works end-to-end offline.
-    Never raises.
+    """Return real [{title, url, snippet}] from live web search, or [] — never
+    fabricated links. Search runs through services.local_browser.local_search:
+    Tavily when TAVILY_API_KEY is set, else the free DuckDuckGo chain (/html/
+    SERP, Lite, Instant-Answer) and a headless Chromium when present.
 
-    The only search backend is the free, no-API-key local browser
-    (services.local_browser): DuckDuckGo Lite over httpx + BeautifulSoup, with a
-    headless-Chromium primary when Playwright is installed. No paid providers.
+    The ONLY time canned results appear is an explicit USE_STUBS dev/test run.
+    In live mode an empty result is returned honestly (Jarvis surfaces "nothing
+    found") rather than inventing example.com URLs. Never raises.
     """
     query = (query or "").strip()
     if not query:
         return []
 
-    # Stub mode always short-circuits — keeps dev/tests hermetic + browser-free.
+    # Dev/test only — keeps the suite hermetic + browser-free.
     if settings.USE_STUBS:
         return _stub_search(query, max_results)
 
+    # Live: real results only. Empty/failed search returns [] — no fabrication.
     try:
         from app.services.local_browser import local_search
 
         out = local_search(query, max_results=max_results)
-        log_event(logger, "web_search", provider="duckduckgo", query_chars=len(query), results=len(out))
-        return out or _stub_search(query, max_results)
+        log_event(logger, "web_search", query_chars=len(query), results=len(out))
+        return out
     except Exception as exc:  # noqa: BLE001
-        log_event(logger, "web_search_failed", provider="duckduckgo", error=str(exc))
-        return _stub_search(query, max_results)
+        log_event(logger, "web_search_failed", query_chars=len(query), error=str(exc))
+        return []
 
 
 # ── RSS ──────────────────────────────────────────────────────────────────────

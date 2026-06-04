@@ -11,6 +11,7 @@ on existing accounts, so the migration needs no backfill job.
 """
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger, log_event
@@ -88,7 +89,18 @@ def ensure_team(db: Session, user: User) -> dict[str, Agent]:
     """
     feed = get_primary_agent(db, user.id)
     if not feed:
-        feed = create_agent_for_user(db, user)
+        # Concurrency-safe: two simultaneous first-login calls (or a stray double
+        # request) both see no primary and both try to insert one. The partial
+        # unique index (one is_primary per user) makes the loser raise — swallow
+        # it, roll back, and re-read the row the winner created.
+        try:
+            feed = create_agent_for_user(db, user)
+        except IntegrityError:
+            db.rollback()
+            feed = get_primary_agent(db, user.id)
+    if not feed:
+        log_event(logger, "ensure_team_no_primary", user_id=user.id)
+        return get_team(db, user.id)
     # Backfill the primary's role (older rows created before this column).
     if feed.role != AgentRole.feed.value:
         feed.role = AgentRole.feed.value
@@ -118,6 +130,11 @@ def ensure_team(db: Session, user: User) -> dict[str, Agent]:
         db.add(agent)
         created += 1
     if created:
-        db.commit()
-        log_event(logger, "team_seeded", user_id=user.id, created=created)
+        # A racing sibling may have seeded the same sub-agents — tolerate the
+        # conflict instead of 500-ing the request that lost.
+        try:
+            db.commit()
+            log_event(logger, "team_seeded", user_id=user.id, created=created)
+        except IntegrityError:
+            db.rollback()
     return get_team(db, user.id)
