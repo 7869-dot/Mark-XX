@@ -30,7 +30,10 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "gemini"
     # Single authoritative model for the whole app (product-owner mandate).
     # Every task tier (light/heavy/ultra) resolves to this one primary model.
-    LLM_MODEL: str = "gemini-3.1-flash"
+    # NOTE: "gemini-3.1-flash" does NOT exist on the API and 404s every call.
+    # The correct id is "gemini-3.5-flash" (cheaper light work may use
+    # "gemini-3.1-flash-lite"). Do not reintroduce a non-existent id here.
+    LLM_MODEL: str = "gemini-3.5-flash"
 
     # ── Tiered models (mixture by task) ──────────────────────────────────────
     # The task router (llm_gateway._model_for()) still distinguishes light/heavy/
@@ -41,11 +44,11 @@ class Settings(BaseSettings):
     # it only ever retries *real* Gemini models on a hard error (e.g. a 404 on a
     # renamed id) and NEVER returns a faked/canned response, so it protects
     # availability without violating the single-model intent.
-    LLM_MODEL_LIGHT: str = "gemini-3.1-flash"
-    LLM_MODEL_HEAVY: str = "gemini-3.1-flash"
-    LLM_MODEL_ULTRA: str = "gemini-3.1-flash"
+    LLM_MODEL_LIGHT: str = "gemini-3.5-flash"
+    LLM_MODEL_HEAVY: str = "gemini-3.5-flash"
+    LLM_MODEL_ULTRA: str = "gemini-3.5-flash"
 
-    # Fallback chain: DISABLED by mandate. Exactly one model (gemini-3.1-flash)
+    # Fallback chain: DISABLED by mandate. Exactly one model (gemini-3.5-flash)
     # is allowed at runtime — no alternative models, no silent substitution. When
     # the primary model errors, llm_gateway raises a hard error that surfaces as
     # an honest "couldn't reach the model" message; it NEVER swaps in another

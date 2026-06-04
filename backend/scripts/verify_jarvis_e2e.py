@@ -8,7 +8,7 @@ What it does (each step prints PASS/FAIL + the real payload, never a fake):
   1. Resolve the model config (light/heavy/ultra + fallbacks).
   2. If a GEMINI_API_KEY is present:
      a. List models from the live Gemini API and report whether the mandated
-        id `gemini-3.1-flash` is actually offered (the authoritative validity
+        id `gemini-3.5-flash` is actually offered (the authoritative validity
         check — there is no offline way to know).
      b. Make a real generate_content call and print the request + response.
   3. Spin up the real FastAPI app with a TestClient, mint a real JWT for a
@@ -28,7 +28,7 @@ import uuid
 # Ensure `import app...` works when run from backend/.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-MANDATED_MODEL = "gemini-3.1-flash"
+MANDATED_MODEL = "gemini-3.5-flash"
 
 
 def section(n: str) -> None:
