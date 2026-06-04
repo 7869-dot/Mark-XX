@@ -236,7 +236,6 @@ def _synthesise(db: Session, jarvis: Agent | None, user: User, reports: dict) ->
         "with what matters, skip the obvious, never dump raw data. Then propose "
         "exactly 3 concrete action items.\n\n"
         f"email_agent report: {json.dumps(reports.get('email', {}), default=str)}\n"
-        f"feed_agent report: {json.dumps(reports.get('feed', {}), default=str)}\n"
         f"web_agent report: {json.dumps(reports.get('web', {}), default=str)}\n\n"
         "Return ONLY valid JSON: {\"briefing\": \"<2-5 sentences>\", "
         "\"action_items\": [\"<item>\", \"<item>\", \"<item>\"]}. No preamble, no markdown fences."
@@ -270,7 +269,7 @@ def run_session(db: Session, user: User, *, force: bool = False) -> dict:
     everything the home screen needs. Never raises."""
     from app.services import user_profile as profiles
     from app.services.agent_team import ensure_team
-    from app.services import email_agent, feed_agent, web_agent
+    from app.services import email_agent, web_agent
     from app.services.agent_runs import last_runs
 
     ensure_team(db, user)
@@ -292,7 +291,7 @@ def run_session(db: Session, user: User, *, force: bool = False) -> dict:
     jarvis = get_jarvis_agent(db, user.id)
 
     reports: dict = {}
-    for name, fn in (("email", email_agent.run_report), ("feed", feed_agent.run_report),
+    for name, fn in (("email", email_agent.run_report),
                      ("web", web_agent.run_report)):
         try:
             reports[name] = fn(db, user)

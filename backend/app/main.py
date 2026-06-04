@@ -12,9 +12,8 @@ from app.core.db import Base, engine
 from app.core.logging import configure_logging, get_logger, log_event
 from app.core.ratelimit import limiter, rate_limit_handler
 from app.api import (
-    auth, agent, tasks, memory, system, integrations,
-    onboarding, schedule, agents, a2a_inbox,
-    users, jarvis, email, web,
+    auth, memory, system, integrations,
+    onboarding, users, jarvis, email, web,
 )
 from app.api.envelope import envelope
 from app.scheduler.jobs import register_jobs
@@ -67,17 +66,6 @@ async def lifespan(app: FastAPI):
     # Phase 8 scale indexes). Idempotent.
     from app.core.schema_sync import run_schema_sync
     run_schema_sync(engine)
-    # One-time idempotent cut-over of legacy social_graph -> agent_connections.
-    from app.core.db import SessionLocal
-    from app.services.profile_sync import migrate_social_graph_to_connections
-
-    _db = SessionLocal()
-    try:
-        migrate_social_graph_to_connections(_db)
-    except Exception as exc:  # noqa: BLE001
-        log_event(logger, "social_graph_migration_failed", error=str(exc))
-    finally:
-        _db.close()
 
     # Boot-time diagnostics — fail loudly here, not silently at runtime.
     # Bug 2: validate configured Gemini model names (404s show at boot).
@@ -181,14 +169,9 @@ async def unhandled_exc_handler(request: Request, exc: Exception):
 
 app.include_router(system.router)
 app.include_router(auth.router)
-app.include_router(agent.router)
-app.include_router(tasks.router)
 app.include_router(memory.router)
 app.include_router(integrations.router)
 app.include_router(onboarding.router)
-app.include_router(schedule.router)
-app.include_router(agents.router)
-app.include_router(a2a_inbox.router)
 app.include_router(users.router)
 app.include_router(jarvis.router)
 app.include_router(email.router)

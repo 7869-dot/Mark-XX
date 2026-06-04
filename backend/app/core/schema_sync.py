@@ -136,23 +136,10 @@ def run_schema_sync(engine: Engine) -> None:
         # --- Google integration disconnect reason (graceful invalid_grant) ---
         _add_column(engine, "users", "google_disconnect_reason", "VARCHAR(64)")
 
-        # --- Unified feed: agent-vs-human post tagging (Sprint 2) ---
-        # Boolean default false works on both PG and SQLite (>=3.23).
-        _add_column(engine, "agent_posts", "is_agent_post", "BOOLEAN", default_sql="false")
-        _add_index(engine, "ix_agent_posts_created", "agent_posts", "created_at")
-
         # --- Indexes for scale (Phase 8 — backend recommendation) ---
-        _add_index(
-            engine, "ix_agent_messages_recipient_processed",
-            "agent_messages", "recipient_agent_id, processed",
-        )
         _add_index(
             engine, "ix_classified_emails_user_category",
             "classified_emails", "user_id, category",
-        )
-        _add_index(
-            engine, "ix_activity_agent_created",
-            "agent_activity_log", "agent_id, created_at",
         )
     except Exception as exc:  # noqa: BLE001
         # Never fail startup over schema sync — log loudly and continue. The

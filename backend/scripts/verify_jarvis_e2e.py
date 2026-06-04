@@ -168,7 +168,9 @@ def step3_multi_agent() -> None:
         # 3) Agent roster.
         sc, pl = get("/jarvis/agents")
         ad = pl.get("data", {})
-        _check("GET /jarvis/agents", sc == 200 and len(ad.get("sub_agents", [])) >= 3,
+        # PA core: exactly two sub-agents — Web + Email (the social "feed" agent
+        # was removed in the PA-core purge).
+        _check("GET /jarvis/agents", sc == 200 and len(ad.get("sub_agents", [])) == 2,
                f"sub_agents={len(ad.get('sub_agents', []))}")
 
         # 4) Email agent surface.

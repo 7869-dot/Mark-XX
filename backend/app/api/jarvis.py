@@ -10,11 +10,11 @@ from app.api.envelope import envelope
 from app.core.db import get_db
 from app.core.ratelimit import limiter
 from app.core.security import get_current_user
-from app.models import AgentTaskResult, ScheduleDraft, PostDraft, User
+from app.models import AgentTaskResult, ScheduleDraft, User
 from app.schemas.jarvis import JarvisChatRequest
 from app.services import jarvis_orchestrator, jarvis_router
 from app.services import user_profile as profiles
-from app.services import email_agent, feed_agent, web_agent
+from app.services import email_agent, web_agent
 from app.services.agent_runs import last_runs
 
 router = APIRouter(tags=["jarvis"])
@@ -77,12 +77,6 @@ def patch_memory(
 @limiter.limit("20/minute")
 def run_email_agent(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return envelope({"report": email_agent.run_report(db, user)})
-
-
-@router.post("/agents/feed/run")
-@limiter.limit("20/minute")
-def run_feed_agent(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return envelope({"report": feed_agent.run_report(db, user)})
 
 
 @router.post("/agents/web/run")
@@ -201,7 +195,7 @@ def jarvis_agents(db: Session = Depends(get_db), user: User = Depends(get_curren
     """The agent roster Jarvis orchestrates: Jarvis itself plus each sub-agent
     with its last run, one-line summary, and status. Drives the status grid."""
     runs = last_runs(db, user.id)
-    label = {"email_agent": "Email Agent", "web_agent": "Web Agent", "feed_agent": "Posting Agent"}
+    label = {"email_agent": "Email Agent", "web_agent": "Web Agent"}
     sub_agents = [
         {
             "key": name,
@@ -334,46 +328,3 @@ def decide_schedule_draft(
     return envelope({"id": s.id, "approved": s.approved, "booked": False})
 
 
-# ── Post drafts (Sprint 3A) ──────────────────────────────────────────────────
-# NOTE: post_drafts is NOT the social feed. The feed_autopost / world_post
-# sweeps never read this table — a post reaches the social layer only after the
-# posting agent's approval flow (real publish wired in a later sprint).
-@router.get("/agents/post-drafts")
-def list_post_drafts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    rows = (
-        db.query(PostDraft)
-        .filter(PostDraft.user_id == user.id, PostDraft.approved.is_(None))
-        .order_by(PostDraft.created_at.desc())
-        .all()
-    )
-    return envelope({"items": [
-        {
-            "id": p.id, "content": p.content, "island_hint": p.island_hint,
-            "approved": p.approved,
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-        }
-        for p in rows
-    ]})
-
-
-@router.patch("/agents/post-drafts/{draft_id}")
-def decide_post_draft(
-    draft_id: str,
-    body: DraftDecision,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Approve or kill a post draft. V1: approving records the decision but does
-    NOT publish to the social layer — that stays behind the posting agent."""
-    p = (
-        db.query(PostDraft)
-        .filter(PostDraft.id == draft_id, PostDraft.user_id == user.id)
-        .first()
-    )
-    if not p:
-        raise HTTPException(status_code=404, detail="post draft not found")
-    if body.approved and body.content is not None:
-        p.content = body.content.strip()
-    p.approved = bool(body.approved)
-    db.commit()
-    return envelope({"id": p.id, "approved": p.approved, "posted": False})

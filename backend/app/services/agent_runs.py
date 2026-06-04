@@ -1,7 +1,7 @@
-"""Sub-agent run logging — one AgentRunLog row per email/feed/web run.
+"""Sub-agent run logging — one AgentRunLog row per email/web run.
 
 Powers GET /agents/status (last run time + one-line summary + status). The
-agent_name is the internal role: email_agent | feed_agent | web_agent.
+agent_name is the internal role: email_agent | web_agent.
 """
 from __future__ import annotations
 
@@ -15,9 +15,8 @@ from app.models import AgentRunLog
 logger = get_logger("axolot.agent_runs")
 
 EMAIL_AGENT = "email_agent"
-FEED_AGENT = "feed_agent"
 WEB_AGENT = "web_agent"
-SUB_AGENTS = (EMAIL_AGENT, FEED_AGENT, WEB_AGENT)
+SUB_AGENTS = (EMAIL_AGENT, WEB_AGENT)
 
 
 def log_run(db: Session, user_id: str, agent_name: str, summary: str, status: str = "ok") -> AgentRunLog:

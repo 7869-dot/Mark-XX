@@ -5,7 +5,7 @@ from sqlalchemy import func, text
 
 from app.core.db import get_db
 from app.core.cache import cache
-from app.models import Agent, Task, AgentInteraction
+from app.models import Agent, Task
 from app.api.envelope import envelope
 from app.services.gemini import ping as gemini_ping
 
@@ -79,15 +79,10 @@ def platform_stats(db: Session = Depends(get_db)):
     cached = cache.get("platform_stats")
     if cached is not None:
         return envelope(cached)
-    day_ago = datetime.utcnow() - timedelta(days=1)
     data = {
         "total_agents": db.query(func.count(Agent.id)).scalar() or 0,
         "tasks_completed_total": db.query(func.count(Task.id))
         .filter(Task.status == "completed")
-        .scalar()
-        or 0,
-        "interactions_today": db.query(func.count(AgentInteraction.id))
-        .filter(AgentInteraction.created_at >= day_ago)
         .scalar()
         or 0,
     }

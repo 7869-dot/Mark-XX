@@ -89,8 +89,10 @@ class PendingPost(Base):
     source_list = Column(JSON, default=list)
     # pending | approved | rejected | published
     status = Column(String, nullable=False, default="pending", index=True)
-    # Set when published — links to the public agent_posts row.
-    agent_post_id = Column(String, ForeignKey("agent_posts.id"), nullable=True)
+    # Legacy column retained for data compatibility (the public social feed and
+    # its agent_posts table were removed in the PA-core purge, so this is no
+    # longer a foreign key — just an opaque id slot).
+    agent_post_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     decided_at = Column(DateTime, nullable=True)
 

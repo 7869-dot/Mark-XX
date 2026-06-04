@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger, log_event
 from app.models import (
-    ActivityType,
     Agent,
     ClassifiedEmail,
     EmailCategory,
@@ -18,7 +17,6 @@ from app.models import (
 )
 from app.services import gmail_service
 from app.services.gemini import generate
-from app.services.activity_logger import log_activity
 
 logger = get_logger("axolot.email_classifier")
 
@@ -163,19 +161,6 @@ def classify_one(
     db.add(row)
     db.commit()
     db.refresh(row)
-
-    if agent:
-        log_activity(
-            db, agent.id, ActivityType.email_classified,
-            f"Classified email from {sender or 'unknown'} as {category.value}.",
-            metadata={"email_id": eid, "category": category.value},
-        )
-        if drafted_reply:
-            log_activity(
-                db, agent.id, ActivityType.email_drafted,
-                f"Drafted a reply to {sender or 'unknown'} — awaiting your approval.",
-                metadata={"email_id": eid},
-            )
     return row
 
 

@@ -16,7 +16,6 @@ alerts, autonomous posts) so an agent's voice is consistent everywhere.
 from sqlalchemy.orm import Session
 from app.core.logging import get_logger, log_event
 from app.models import Agent, AgentMemory, ChatHistory, ConversationSummary, UserPersonality, User
-from app.services.world_context import build_world_context
 
 logger = get_logger("axolot.context_builder")
 
@@ -105,9 +104,9 @@ def build_agent_context(db: Session, agent: Agent, task_type: str | None = None)
     )
     memory_text = "\n".join(f"- {m.content}" for m in memories) or "No notable memories yet."
 
-    world = build_world_context(db)
+    world = ""
     if task_type in _COMM_TASK_TYPES:
-        world = world + "\n\n" + get_communication_context(db, user)
+        world = get_communication_context(db, user)
 
     goals = user.goals or []
     goals_text = "\n".join(f"- {g}" for g in goals) or "No goals set yet."

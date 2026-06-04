@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean, Float, Text
+from sqlalchemy import Column, String, DateTime, Boolean
 
 from app.core.db import Base
 
@@ -34,16 +34,3 @@ class SchedulerLock(Base):
     job_id = Column(String, primary_key=True)
     locked_at = Column(DateTime, default=datetime.utcnow)
     locked = Column(Boolean, default=False, nullable=False)
-
-
-class ReputationEvent(Base):
-    """Event-sourced reputation. reputation_score is recomputed, never mutated."""
-
-    __tablename__ = "reputation_events"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    agent_id = Column(String, nullable=False, index=True)
-    event_type = Column(String, nullable=False)  # task_approved | task_rejected | interaction_accepted | interaction_declined | inactive_decay | task_completed
-    delta = Column(Float, nullable=False)
-    reason = Column(Text, default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
