@@ -59,32 +59,68 @@ _LANE_TO_MODE = {
 }
 
 
+# Explicit-command keywords -> lane. Checked first: a fast, reliable route that
+# CAN'T be drowned out by persona context the way the model classifier was.
+# Email/schedule are checked before web so "email Dana to schedule…" -> email.
+_LANE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "email": (
+        "email", "e-mail", "inbox", "reply to", "respond to", "draft a reply",
+        "draft an email", "draft email", "write an email", "send an email",
+        "send a note", "message to", "reach out to", "follow up with",
+    ),
+    "schedule": (
+        "schedule a", "schedule the", "book a", "set up a meeting", "set up a call",
+        "find a time", "add to my calendar", "put on my calendar", "calendar",
+        "what's on my calendar", "my schedule",
+    ),
+    "web": (
+        "find me", "find a", "search for", "search the", "look up", "look into",
+        "look for", "research", "what's happening", "whats happening",
+        "what is happening", "latest news", "news on", "news about", "find out",
+        "tell me about", "look it up", "google",
+    ),
+}
+
+
+def _keyword_lane(message: str) -> str | None:
+    m = (message or "").lower()
+    for lane in ("email", "schedule", "web"):
+        if any(kw in m for kw in _LANE_KEYWORDS[lane]):
+            return lane
+    return None
+
+
 def classify_intent(db: Session, jarvis: Agent | None, message: str) -> str:
     """Jarvis reads a free-form task and decides WHICH sub-agent owns it.
 
-    This is the manager's core job: receive a task, pick the right sub-agent.
-    Returns one of _DELEGATE_LANES. Falls back to 'self' on any failure so the
-    user always gets a reply. The stub returns a deterministic keyword route so
-    delegation is testable offline.
+    Returns one of _DELEGATE_LANES. An explicit-command keyword wins immediately
+    (fast, reliable). Otherwise a LEAN model call decides — deliberately NOT via
+    generate_for_agent: feeding the routing question 6k chars of persona/memory
+    made the model default to "self" on almost everything (the bug). Falls back
+    to "self" on any failure so the user always gets a reply.
     """
+    kw = _keyword_lane(message)
+    if kw:
+        log_event(logger, "jarvis_route_keyword", lane=kw)
+        return kw
     if not jarvis:
         return "self"
     try:
-        from app.services.gemini import generate_for_agent, extract_json
+        from app.services.gemini import generate, extract_json
 
         instruction = (
-            "You are Jarvis, the manager of three sub-agents. Read the user's "
-            "message and decide who should handle it:\n"
-            "- \"email\": writing/replying to an email or anything inbox-related\n"
-            "- \"web\": researching, finding, or looking something up on the web\n"
-            "- \"schedule\": booking, calendar, or meeting-time requests\n"
-            "- \"post\": drafting a social/feed post\n"
-            "- \"self\": none of the above — you should just respond yourself\n\n"
+            "Classify the user's message into exactly one lane and output ONLY JSON.\n"
+            "- email: writing, replying to, or triaging email / the inbox\n"
+            "- web: finding, searching, researching, or looking anything up online\n"
+            "- schedule: booking, calendar, or meeting-time requests\n"
+            "- post: drafting a social post\n"
+            "- self: ONLY pure conversation, opinion, or thinking-out-loud that needs no tool\n\n"
+            "Prefer a tool lane whenever the user asks to DO or FIND something; use "
+            "self only for open-ended reflection.\n\n"
             f"User message: \"{message}\"\n\n"
-            "Return ONLY valid JSON: {\"lane\": \"email|web|schedule|post|self\"}. "
-            "No preamble."
+            "Return ONLY: {\"lane\": \"email|web|schedule|post|self\"}"
         )
-        data = extract_json(generate_for_agent(db, jarvis, instruction, response_format="jarvis_route"))
+        data = extract_json(generate(instruction, response_format="jarvis_route"))
         lane = str(data.get("lane", "self")).strip().lower()
         return lane if lane in _DELEGATE_LANES else "self"
     except Exception:  # noqa: BLE001
