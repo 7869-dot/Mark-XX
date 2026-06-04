@@ -207,38 +207,6 @@ def _search_playwright(query: str, max_results: int) -> list[dict]:
     return _parse_lite(html, max_results)
 
 
-# ── Search: SerpAPI last-resort (cloud-safe, optional) ───────────────────────
-def _serpapi_key() -> str:
-    """Read the SerpAPI key from env (SERPAPI_KEY) first, then settings. Empty
-    string when unconfigured — caller skips the fallback silently."""
-    import os
-
-    return (os.environ.get("SERPAPI_KEY") or settings.SERPAPI_API_KEY or "").strip()
-
-
-def _search_serpapi(query: str, max_results: int) -> list[dict]:
-    """Reliable cloud fallback when both Playwright and httpx fail (e.g. server
-    IP blocked by DuckDuckGo). Skipped silently when SERPAPI_KEY is absent."""
-    import httpx
-
-    key = _serpapi_key()
-    if not key:
-        return []
-    resp = httpx.get(
-        "https://serpapi.com/search.json",
-        params={"q": query, "api_key": key, "num": max_results, "engine": "google"},
-        timeout=settings.WEB_FETCH_TIMEOUT_SECONDS,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    out = [
-        {"title": r.get("title", ""), "url": r.get("link", ""), "snippet": (r.get("snippet", "") or "")[:300]}
-        for r in (data.get("organic_results") or [])
-        if r.get("link")
-    ]
-    return out[:max_results]
-
-
 # ── Search: DuckDuckGo Instant Answer JSON API (cloud-friendlier, free) ───────
 def _search_ddg_api(query: str, max_results: int) -> list[dict]:
     """DuckDuckGo's Instant Answer JSON API on api.duckduckgo.com — a DIFFERENT
@@ -279,8 +247,8 @@ def _search_ddg_api(query: str, max_results: int) -> list[dict]:
 def local_search(query: str, max_results: int = 5) -> list[dict]:
     """Free web search. Returns [{title,url,snippet}]. Tries, in order:
     Playwright (headless Chromium, skipped when Chromium is known-missing) ->
-    httpx DuckDuckGo Lite -> DuckDuckGo Instant-Answer JSON API -> SerpAPI (only
-    if SERPAPI_KEY is set) -> []. Never raises."""
+    httpx DuckDuckGo Lite -> DuckDuckGo Instant-Answer JSON API -> []. All free,
+    no API key, no paid provider. Never raises."""
     global _PLAYWRIGHT_MISSING
     query = (query or "").strip()
     if not query:
@@ -291,8 +259,6 @@ def local_search(query: str, max_results: int = 5) -> list[dict]:
         engines.append(("playwright", _search_playwright))
     engines.append(("httpx_lite", _search_httpx))
     engines.append(("ddg_api", _search_ddg_api))
-    if _serpapi_key():
-        engines.append(("serpapi", _search_serpapi))
 
     for name, fn in engines:
         try:
@@ -307,7 +273,7 @@ def local_search(query: str, max_results: int = 5) -> list[dict]:
                 log_event(logger, "playwright_disabled", reason="chromium_not_installed")
             log_event(logger, "local_search_failed", engine=name, error=msg[:160])
     log_event(logger, "local_search_empty", query_chars=len(query),
-              serpapi=bool(_serpapi_key()), playwright=not _PLAYWRIGHT_MISSING)
+              playwright=not _PLAYWRIGHT_MISSING)
     return []
 
 

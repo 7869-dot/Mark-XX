@@ -1,6 +1,6 @@
 """Agent Web Access — the agent's sensory system.
 
-Live web search (Tavily/SerpAPI, stub fallback), an RSS reader, the per-user
+Live web search (free DuckDuckGo via local_browser, stub fallback), an RSS reader, the per-user
 TopicInterestProfile, and grounded post composition: the agent reads real
 sources and writes *the user's take* on them — every output carries a
 confidence_score and a traceable source_list, never a hallucination.
@@ -50,70 +50,30 @@ def _stub_search(query: str, max_results: int) -> list[dict]:
 
 
 def web_search(query: str, max_results: int = 4) -> list[dict]:
-    """Return [{title, url, snippet}]. Falls back to deterministic stubs when no
-    provider key is set (or in stub mode), so grounding works end-to-end offline.
+    """Return [{title, url, snippet}]. Falls back to deterministic stubs in stub
+    mode (or when search yields nothing), so grounding works end-to-end offline.
     Never raises.
 
-    Provider "duckduckgo" (the default) needs NO API key — it drives a local
-    headless browser (services.local_browser) with an httpx+BS4 fallback.
+    The only search backend is the free, no-API-key local browser
+    (services.local_browser): DuckDuckGo Lite over httpx + BeautifulSoup, with a
+    headless-Chromium primary when Playwright is installed. No paid providers.
     """
     query = (query or "").strip()
     if not query:
         return []
-    provider = (settings.WEB_SEARCH_PROVIDER or "duckduckgo").lower()
 
     # Stub mode always short-circuits — keeps dev/tests hermetic + browser-free.
     if settings.USE_STUBS:
         return _stub_search(query, max_results)
 
-    # Free, no-key path: local headless browser.
-    if provider in ("duckduckgo", "ddg", "local", "browser"):
-        try:
-            from app.services.local_browser import local_search
-
-            out = local_search(query, max_results=max_results)
-            log_event(logger, "web_search", provider="duckduckgo", query_chars=len(query), results=len(out))
-            return out or _stub_search(query, max_results)
-        except Exception as exc:  # noqa: BLE001
-            log_event(logger, "web_search_failed", provider="duckduckgo", error=str(exc))
-            return _stub_search(query, max_results)
-
-    # Paid providers (only when a key is configured).
-    key = settings.TAVILY_API_KEY if provider == "tavily" else settings.SERPAPI_API_KEY
-    if not key:
-        return _stub_search(query, max_results)
     try:
-        import httpx
+        from app.services.local_browser import local_search
 
-        if provider == "tavily":
-            resp = httpx.post(
-                "https://api.tavily.com/search",
-                json={"api_key": key, "query": query, "max_results": max_results,
-                      "search_depth": "basic"},
-                timeout=settings.WEB_FETCH_TIMEOUT_SECONDS,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            out = [
-                {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")[:300]}
-                for r in (data.get("results") or [])
-            ]
-        else:  # serpapi
-            resp = httpx.get(
-                "https://serpapi.com/search",
-                params={"api_key": key, "q": query, "num": max_results},
-                timeout=settings.WEB_FETCH_TIMEOUT_SECONDS,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            out = [
-                {"title": r.get("title", ""), "url": r.get("link", ""), "snippet": r.get("snippet", "")[:300]}
-                for r in (data.get("organic_results") or [])
-            ]
-        log_event(logger, "web_search", provider=provider, query_chars=len(query), results=len(out))
-        return out[:max_results] or _stub_search(query, max_results)
+        out = local_search(query, max_results=max_results)
+        log_event(logger, "web_search", provider="duckduckgo", query_chars=len(query), results=len(out))
+        return out or _stub_search(query, max_results)
     except Exception as exc:  # noqa: BLE001
-        log_event(logger, "web_search_failed", provider=provider, error=str(exc))
+        log_event(logger, "web_search_failed", provider="duckduckgo", error=str(exc))
         return _stub_search(query, max_results)
 
 
@@ -239,9 +199,7 @@ def compose_grounded_post(db: Session, agent: Agent, topic: str) -> dict:
     content = (generate_for_agent(db, agent, instruction, response_format="grounded_post") or "").strip().strip('"').strip()
 
     # Confidence: grounded in real, non-stub sources => higher. Empty => 0.
-    stubbed = settings.USE_STUBS or not (
-        settings.TAVILY_API_KEY or settings.SERPAPI_API_KEY
-    )
+    stubbed = settings.USE_STUBS or not sources
     if not content or content == LLM_UNAVAILABLE:
         # No real generation (empty, or the model was unreachable) — confidence 0
         # so the honest-error text can never auto-publish to the public feed.

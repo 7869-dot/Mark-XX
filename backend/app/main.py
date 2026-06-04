@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
         if not usable:
             log_event(logger, "startup_warning",
                       issue="Playwright/Chromium not usable — web search falls back "
-                            "to httpx (DDG Lite) then SerpAPI. Run "
+                            "to httpx (DDG Lite) then the DDG JSON API. Run "
                             "`python -m playwright install chromium --with-deps` in the build.")
     except Exception as exc:  # noqa: BLE001
         log_event(logger, "browser_availability_check_failed", error=str(exc))

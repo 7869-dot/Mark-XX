@@ -10,7 +10,7 @@ Adaptive learning: it reads the rolling feedback_log (via user_profile
 .category_weights) and re-weights categories — surfacing more of what the user
 upvotes and suppressing what they dismiss.
 
-Search uses agent_web.web_search (Tavily/SerpAPI with httpx + deterministic stub
+Search uses agent_web.web_search (free DuckDuckGo via httpx/BS4 + deterministic stub
 fallback), so it works end-to-end with no external key. Relevance ranking uses
 the heavy Gemini tier, with a deterministic heuristic fallback so it never hangs.
 """

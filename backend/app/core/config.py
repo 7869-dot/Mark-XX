@@ -73,15 +73,12 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 30.0
 
     # ── Agent web access (Sprint 6) ──────────────────────────────────────────
-    # Live web search for grounded posts + the web scout. Default provider is
-    # "duckduckgo" — a FREE, no-API-key path that drives a local headless browser
-    # (Playwright) with an httpx+BeautifulSoup fallback (see services.local_browser).
-    # "tavily"/"serpapi" remain available for those who set a key. With USE_STUBS
-    # (dev/tests) every provider short-circuits to deterministic stubs, so the
+    # Live web search for the web scout + grounded research. The ONLY backend is
+    # the FREE, no-API-key local path: DuckDuckGo Lite over httpx + BeautifulSoup,
+    # with a headless-Chromium (Playwright) primary when installed (see
+    # services.local_browser). No paid providers (no Tavily, no SerpAPI). With
+    # USE_STUBS (dev/tests) search short-circuits to deterministic stubs, so the
     # feature works end-to-end with no external dep and no browser install.
-    WEB_SEARCH_PROVIDER: str = "duckduckgo"   # duckduckgo (local, free) | tavily | serpapi
-    TAVILY_API_KEY: str = ""
-    SERPAPI_API_KEY: str = ""
     WEB_FETCH_TIMEOUT_SECONDS: float = 12.0
 
     # ── Autonomous opportunity scan (token control) ──────────────────────────

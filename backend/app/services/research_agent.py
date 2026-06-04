@@ -1,6 +1,6 @@
 """Research agent — Jarvis as a research partner, not a search engine (Sprint 3A).
 
-Web search (reuses agent_web.web_search — Tavily/SerpAPI with stub fallback) is
+Web search (reuses agent_web.web_search — free DuckDuckGo with stub fallback) is
 synthesized through Jarvis in the user's voice: a verbal briefing, not a report.
 Results are ephemeral — displayed inline in chat, never stored, no approval.
 """
