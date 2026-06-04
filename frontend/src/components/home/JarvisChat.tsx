@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconSend, IconArrowRight } from "@tabler/icons-react";
-import { api, type JarvisAction } from "@/lib/api";
+import { api, type AgentDraft, type JarvisAction } from "@/lib/api";
 import { Markdown } from "@/components/chat/Markdown";
 import type { PanelTab } from "./AgentPanel";
 
@@ -13,7 +13,9 @@ type Turn = {
   panelHint?: PanelTab | null;
 };
 
-function panelHintFor(action: JarvisAction | null, reply: string): PanelTab | null {
+function panelHintFor(action: JarvisAction | null, reply: string, delegated?: string | null): PanelTab | null {
+  if (delegated === "web") return "web";
+  if (delegated === "email") return "emails";
   if (action?.type === "draft_email") return "emails";
   if (action?.type === "research_result") return "web";
   const r = reply.toLowerCase();
@@ -27,11 +29,13 @@ export function JarvisChat({
   prefill,
   onSwitchTab,
   onDraftRevised,
+  onDraftCreated,
 }: {
   briefingSlot: ReactNode;
   prefill?: ChatPrefill;
   onSwitchTab: (t: PanelTab) => void;
   onDraftRevised: (draftId: string, content: string) => void;
+  onDraftCreated: (draft: AgentDraft) => void;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -65,14 +69,35 @@ export function JarvisChat({
     setTurns((t) => [...t, { id: crypto.randomUUID(), role: "user", text }]);
     try {
       const ctx = draftId ? { draft_id: draftId } : undefined;
-      const r = await api.jarvisChat(text, "default", ctx);
-      if (draftId && r.action?.type === "draft_email") {
-        const revised = (r.action.payload?.draft_content as string) || "";
-        if (revised) onDraftRevised(draftId, revised);
+      // mode=auto → Jarvis classifies the task and delegates to a sub-agent.
+      const r = await api.jarvisChat(text, "auto", ctx);
+      // Reflect any email draft Jarvis produced into the Emails panel.
+      if (r.action?.type === "draft_email") {
+        const content = (r.action.payload?.draft_content as string) || "";
+        if (draftId && content) {
+          onDraftRevised(draftId, content); // revision of an existing draft
+        } else if (content) {
+          onDraftCreated({
+            id: String(r.action.payload?.draft_id ?? crypto.randomUUID()),
+            task_id: null,
+            agent_role: "email",
+            subject_line: String(r.action.payload?.subject_line ?? ""),
+            recipient_hint: String(r.action.payload?.recipient_hint ?? ""),
+            draft_content: content,
+            requires_approval: true,
+            approved: null,
+            created_at: new Date().toISOString(),
+          });
+        }
       }
       setTurns((t) => [
         ...t,
-        { id: crypto.randomUUID(), role: "jarvis", text: r.reply, panelHint: panelHintFor(r.action, r.reply) },
+        {
+          id: crypto.randomUUID(),
+          role: "jarvis",
+          text: r.reply,
+          panelHint: panelHintFor(r.action, r.reply, r.delegated_to),
+        },
       ]);
     } catch {
       setTurns((t) => [

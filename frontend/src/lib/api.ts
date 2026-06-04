@@ -203,7 +203,7 @@ export type JarvisSession =
       focus_prompt: string;
     };
 
-export type ChatModeValue = "default" | "email" | "schedule" | "research" | "post";
+export type ChatModeValue = "auto" | "default" | "email" | "schedule" | "research" | "post";
 
 export type JarvisAction = {
   type: "draft_email" | "schedule_event" | "research_result" | "post_draft";
@@ -216,6 +216,9 @@ export type JarvisChatResponse = {
   mode: ChatModeValue;
   action: JarvisAction | null;
   follow_up: string | null;
+  // When mode=auto, the sub-agent Jarvis delegated to (web | email | … | self).
+  delegated_to?: string | null;
+  remembered_interests?: string[];
 };
 
 export type EmailItem = { subject: string; from: string; suggested_reply?: string };
@@ -258,7 +261,7 @@ export const api = {
   jarvisBriefing: () => request<JarvisSession>("/jarvis/briefing"),
   jarvisChat: (
     message: string,
-    mode: ChatModeValue = "default",
+    mode: ChatModeValue = "auto", // Jarvis classifies + delegates to a sub-agent
     context?: Record<string, unknown>
   ) =>
     request<JarvisChatResponse>("/jarvis/chat", {

@@ -154,6 +154,12 @@ export function HomePage() {
     setTab("emails");
   }, []);
 
+  // Jarvis drafted a brand-new email via chat — surface it in the Emails tab.
+  const onDraftCreated = useCallback((draft: AgentDraft) => {
+    setDrafts((ds) => (ds.some((d) => d.id === draft.id) ? ds : [draft, ...ds]));
+    setTab("emails");
+  }, []);
+
   const onConnectGmail = useCallback(async () => {
     try {
       const { authorization_url } = await api.gmailConnect();
@@ -237,6 +243,7 @@ export function HomePage() {
           prefill={prefill}
           onSwitchTab={setTab}
           onDraftRevised={onDraftRevised}
+          onDraftCreated={onDraftCreated}
         />
         <div className="axo-right">
           <AgentPanel

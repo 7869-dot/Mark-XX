@@ -28,10 +28,17 @@ from app.schemas.jarvis import JarvisContext, AgentTask
 logger = get_logger("axolot.jarvis")
 
 CACHE_TTL_SECONDS = 30 * 60
+# Briefing cache — short so a double-fire / rapid reload doesn't re-run the
+# sub-agents + Gemini synthesis, while still refreshing every few minutes.
+SESSION_CACHE_TTL_SECONDS = 180
 
 
 def _cache_key(user_id: str) -> str:
     return f"jarvis_ctx:{user_id}"
+
+
+def _session_cache_key(user_id: str) -> str:
+    return f"jarvis_session:{user_id}"
 
 
 def get_jarvis_agent(db: Session, user_id: str) -> Agent | None:
@@ -288,6 +295,16 @@ def run_session(db: Session, user: User, *, force: bool = False) -> dict:
             "questions": profiles.ONBOARDING_QUESTIONS,
         }
 
+    # Short-TTL cache: session/start runs the sub-agents + a Gemini synthesis (a
+    # ~7s, multi-call operation). Without this, a double-fire or a rapid reload
+    # re-runs the whole thing. The agent panels fetch live data separately, so a
+    # briefly-cached briefing doesn't make the screen stale.
+    if not force:
+        cached = cache.get(_session_cache_key(user.id))
+        if cached is not None:
+            log_event(logger, "jarvis_session_cache_hit", user_id=user.id)
+            return cached
+
     jarvis = get_jarvis_agent(db, user.id)
 
     reports: dict = {}
@@ -303,7 +320,7 @@ def run_session(db: Session, user: User, *, force: bool = False) -> dict:
     status = _status_payload(last_runs(db, user.id))
 
     log_event(logger, "jarvis_session_ran", user_id=user.id)
-    return {
+    result = {
         "onboarding": False,
         "greeting": f"Welcome back, {first}.",
         "briefing": synthesis["briefing"],
@@ -312,6 +329,10 @@ def run_session(db: Session, user: User, *, force: bool = False) -> dict:
         "agent_status": status,
         "focus_prompt": "What do you want to focus on today?",
     }
+    # Cache only a real briefing — never pin a synthesis failure.
+    if not synthesis.get("error"):
+        cache.set(_session_cache_key(user.id), result, ttl_seconds=SESSION_CACHE_TTL_SECONDS)
+    return result
 
 
 def _status_payload(runs: dict) -> list[dict]:

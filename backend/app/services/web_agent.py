@@ -22,9 +22,11 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.logging import get_logger, log_event
 from app.models import Agent, User, UserProfile, WebScoutResult, WEB_CATEGORIES
 from app.models.agent import AgentRole
+from app.models.jarvis_profile import AgentRunLog
 from app.services import user_profile as profiles
 from app.services.agent_runs import WEB_AGENT, log_run
 
@@ -60,6 +62,24 @@ def _interests_for(profile: UserProfile | None) -> list[str]:
         if v:
             interests.append(v)
     return interests or ["technology"]
+
+
+def _scanned_recently(db: Session, user_id: str) -> bool:
+    """True if the scout completed a scan within the cooldown window. Used to
+    skip the expensive Tavily + Gemini re-scan on every page load / briefing —
+    the scheduled opportunity_scan refreshes finds in the background instead."""
+    cooldown = timedelta(hours=settings.OPPORTUNITY_SCAN_COOLDOWN_HOURS)
+    last = (
+        db.query(AgentRunLog)
+        .filter(
+            AgentRunLog.user_id == user_id,
+            AgentRunLog.agent_name == WEB_AGENT,
+            AgentRunLog.status == "ok",
+        )
+        .order_by(AgentRunLog.ran_at.desc())
+        .first()
+    )
+    return bool(last and last.ran_at and (datetime.utcnow() - last.ran_at) < cooldown)
 
 
 def _recent_urls(db: Session, user_id: str) -> set[str]:
@@ -117,12 +137,16 @@ def _rank_with_llm(db: Session, agent: Agent | None, profile: UserProfile | None
         return {}
 
 
-def run_report(db: Session, user: User, *, per_category: int = 3, top_n: int = 5) -> dict:
-    """Scan the user's active categories, store finds, and report the top finds.
+def run_report(db: Session, user: User, *, per_category: int = 3, top_n: int = 5,
+               force_scan: bool = False) -> dict:
+    """Report the user's top web finds, scanning fresh only when due.
 
-    Returns {"top_finds": [{id, title, url, summary, category, relevance_score}],
-             "scanned_categories": [...], "stored": <int>}. Never raises —
-    logs an AgentRunLog row (status 'ok'/'error') as a side effect.
+    A fresh scan (Tavily/DDG search per category + Gemini relevance ranking) is
+    expensive, so it's skipped when the scout already scanned within the cooldown
+    — page loads / briefings then just report the standing finds while the
+    scheduled opportunity_scan refreshes in the background. Pass force_scan=True
+    to always scan. Returns {"top_finds":[...], "scanned_categories":[...],
+    "stored": <int>, "scanned": <bool>}. Never raises — logs an AgentRunLog row.
     """
     from app.services.agent_web import web_search
 
@@ -134,30 +158,34 @@ def run_report(db: Session, user: User, *, per_category: int = 3, top_n: int = 5
     # leave nothing to scan.
     kept = [c for c in categories if weights.get(c, 1.0) >= 0.4] or categories
 
-    interests = _interests_for(profile)
-    primary = interests[0]
-    seen_urls = _recent_urls(db, user.id)
+    do_scan = force_scan or not _scanned_recently(db, user.id)
 
     candidates: list[dict] = []
-    for cat in kept:
-        template = _QUERY_TEMPLATES.get(cat, "{interest} " + cat)
-        query = template.format(interest=primary)
-        try:
-            results = web_search(query, max_results=per_category)
-        except Exception as exc:  # noqa: BLE001
-            log_event(logger, "web_scan_failed", category=cat, error=str(exc))
-            results = []
-        for r in results:
-            url = (r.get("url") or "").strip()
-            if not url or url in seen_urls:
-                continue
-            seen_urls.add(url)
-            candidates.append({
-                "title": (r.get("title") or "").strip()[:300],
-                "url": url,
-                "snippet": (r.get("snippet") or "").strip(),
-                "category": cat,
-            })
+    if do_scan:
+        interests = _interests_for(profile)
+        primary = interests[0]
+        seen_urls = _recent_urls(db, user.id)
+        for cat in kept:
+            template = _QUERY_TEMPLATES.get(cat, "{interest} " + cat)
+            query = template.format(interest=primary)
+            try:
+                results = web_search(query, max_results=per_category)
+            except Exception as exc:  # noqa: BLE001
+                log_event(logger, "web_scan_failed", category=cat, error=str(exc))
+                results = []
+            for r in results:
+                url = (r.get("url") or "").strip()
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                candidates.append({
+                    "title": (r.get("title") or "").strip()[:300],
+                    "url": url,
+                    "snippet": (r.get("snippet") or "").strip(),
+                    "category": cat,
+                })
+    else:
+        log_event(logger, "web_scan_skipped", user_id=user.id, reason="cooldown")
 
     ranked = _rank_with_llm(db, agent, profile, candidates) if candidates else {}
 
@@ -209,10 +237,17 @@ def run_report(db: Session, user: User, *, per_category: int = 3, top_n: int = 5
         for r in top
     ]
 
-    summary_line = (
-        f"Scanned {len(kept)} categories, surfaced {len(top_finds)} high-signal finds "
-        f"(top: {top_finds[0]['title']})." if top_finds else "Scan complete; nothing high-signal."
-    )
-    log_run(db, user.id, WEB_AGENT, summary_line, status="ok")
-    log_event(logger, "web_report", user_id=user.id, stored=len(stored_rows), top=len(top_finds))
-    return {"top_finds": top_finds, "scanned_categories": kept, "stored": len(stored_rows)}
+    # Only an actual scan logs an AgentRunLog — that's what anchors the cooldown
+    # (both here and in the scheduled job). Report-only calls must NOT refresh
+    # the timestamp, or frequent page loads would pin the cooldown open forever
+    # and the scout would never re-scan.
+    if do_scan:
+        summary_line = (
+            f"Scanned {len(kept)} categories, surfaced {len(top_finds)} high-signal finds "
+            f"(top: {top_finds[0]['title']})." if top_finds else "Scan complete; nothing high-signal."
+        )
+        log_run(db, user.id, WEB_AGENT, summary_line, status="ok")
+    log_event(logger, "web_report", user_id=user.id,
+              scanned=do_scan, stored=len(stored_rows), top=len(top_finds))
+    return {"top_finds": top_finds, "scanned_categories": kept,
+            "stored": len(stored_rows), "scanned": do_scan}
