@@ -1,36 +1,21 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
 .venv/
 venv/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
+dist/
+*.egg
 
 # Env
 .env
-.env.local
-.env.*.local
-
-# Database
-*.db
-*.db-journal
-*.sqlite
+*.env.local
 
 # Node
-node_modules/
-dist/
-build/
-.vite/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 
-# IDE
-.vscode/
-.idea/
+# OS
 .DS_Store
 Thumbs.db
-
-# Claude Code session + worktree data (never commit)
-.claude/
-
-# TS build cache
-*.tsbuildinfo
