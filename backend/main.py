@@ -14,6 +14,7 @@ from pydantic import BaseModel
 import matchmaker
 import orchestrator
 from api.a2a import router as a2a_router
+from api.auth import router as auth_router
 from config import A2A_SCHEDULE_MINUTES
 from db import init_db
 from tools.email_tools import send_email
@@ -65,7 +66,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(a2a_router)
+app.include_router(auth_router)   # /auth/login, /auth/callback, /auth/me
+app.include_router(a2a_router)    # /agent-card, /briefings, /admin
 
 # In-memory draft store. Replace with Redis for multi-process deployments.
 _pending_drafts: dict[str, dict] = {}

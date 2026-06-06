@@ -3,66 +3,84 @@ import ChatWindow from './components/ChatWindow.jsx'
 import AgentActivity from './components/AgentActivity.jsx'
 import EmailConfirm from './components/EmailConfirm.jsx'
 import BriefingsPanel from './components/BriefingsPanel.jsx'
+import LoginPage from './components/LoginPage.jsx'
+import { getJwt, setJwt, clearJwt, isAuthenticated, authHeaders, apiFetch } from './api.js'
 
-/* ── User picker helpers ────────────────────────────────────────────────── */
-const LS_KEY = 'axolotl_user_id'
-
-function loadStoredUserId() {
-  try { return localStorage.getItem(LS_KEY) || '' } catch { return '' }
-}
-function storeUserId(id) {
-  try { localStorage.setItem(LS_KEY, id) } catch {}
-}
-
-/* ── Main App ────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [messages, setMessages]       = useState([])
+  /* ── Auth state ──────────────────────────────────────────────────────── */
+  const [authReady, setAuthReady]   = useState(false)   // finished checking JWT
+  const [user, setUser]             = useState(null)     // {id, display_name, email}
+
+  /* ── Chat state ──────────────────────────────────────────────────────── */
+  const [messages, setMessages]     = useState([])
   const [agentEvents, setAgentEvents] = useState([])
-  const [emailDraft, setEmailDraft]   = useState(null)
-  const [isLoading, setIsLoading]     = useState(false)
+  const [emailDraft, setEmailDraft] = useState(null)
+  const [isLoading, setIsLoading]   = useState(false)
   const [activeAgent, setActiveAgent] = useState(null)
-
-  // A2A / user state
-  const [userId, setUserId]           = useState(loadStoredUserId)
-  const [users, setUsers]             = useState([])    // [{id, display_name}]
-  const [briefingsOpen, setBriefingsOpen] = useState(false)
-  const [unseenCount, setUnseenCount] = useState(0)
-
   const streamRef = useRef('')
 
-  /* ── Load users list for picker ──────────────────────────────────────── */
+  /* ── Briefings state ─────────────────────────────────────────────────── */
+  const [briefingsOpen, setBriefingsOpen] = useState(false)
+  const [unseenCount, setUnseenCount]     = useState(0)
+
+  /* ── 1. On mount: harvest token from URL or check localStorage ───────── */
   useEffect(() => {
-    fetch('/users')
-      .then(r => r.ok ? r.json() : [])
-      .then(setUsers)
-      .catch(() => {})
+    const params = new URLSearchParams(window.location.search)
+    const urlToken = params.get('token')
+    if (urlToken) {
+      setJwt(urlToken)
+      // Remove token from URL so it's not in browser history
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    if (isAuthenticated()) {
+      fetchMe()
+    } else {
+      setAuthReady(true)
+    }
   }, [])
 
-  /* ── Poll unseen briefing count when a userId is set ─────────────────── */
+  async function fetchMe() {
+    try {
+      const res = await apiFetch('/auth/me')
+      if (res.ok) {
+        setUser(await res.json())
+      } else {
+        // JWT might be expired — clear it and show login
+        clearJwt()
+      }
+    } catch {
+      clearJwt()
+    } finally {
+      setAuthReady(true)
+    }
+  }
+
+  function handleLogout() {
+    clearJwt()
+    setUser(null)
+    setMessages([])
+    setAgentEvents([])
+  }
+
+  /* ── 2. Poll unseen briefings count ──────────────────────────────────── */
   useEffect(() => {
-    if (!userId) { setUnseenCount(0); return }
+    if (!user) { setUnseenCount(0); return }
     let active = true
+
     async function poll() {
       try {
-        const res = await fetch('/briefings', { headers: { 'X-User-Id': userId } })
-        if (res.ok && active) {
-          const data = await res.json()
-          setUnseenCount(data.length)
-        }
+        const res = await apiFetch('/briefings')
+        if (res.ok && active) setUnseenCount((await res.json()).length)
       } catch {}
     }
+
     poll()
     const id = setInterval(poll, 30_000)
     return () => { active = false; clearInterval(id) }
-  }, [userId])
+  }, [user])
 
-  function selectUser(id) {
-    setUserId(id)
-    storeUserId(id)
-    setUnseenCount(0)
-  }
-
-  /* ── Chat / SSE ──────────────────────────────────────────────────────── */
+  /* ── 3. Chat / SSE ───────────────────────────────────────────────────── */
   const addAgentEvent = useCallback((evt) => {
     setAgentEvents(prev => [...prev, { ...evt, ts: Date.now() }])
   }, [])
@@ -130,7 +148,7 @@ export default function App() {
     try {
       const res = await fetch('/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ message: text }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -159,17 +177,30 @@ export default function App() {
     try {
       const res = await fetch('/confirm-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(edited),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Send failed')
-      setMessages(prev => [...prev, { id: Date.now(), role: 'system', content: `✓ Email sent to ${edited.to}` }])
+      setMessages(prev => [...prev, { id: Date.now(), role: 'system', content: `Email sent to ${edited.to}` }])
       setEmailDraft(null)
     } catch (err) {
       alert(`Failed to send email: ${err.message}`)
     }
   }, [])
+
+  /* ── Render ──────────────────────────────────────────────────────────── */
+  if (!authReady) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Loading…</div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginPage />
+  }
 
   return (
     <div style={styles.root}>
@@ -182,22 +213,28 @@ export default function App() {
         <span style={styles.tagline}>The next frontier of AI agents</span>
 
         <div style={styles.headerRight}>
-          {/* User picker */}
-          <UserPicker users={users} userId={userId} onSelect={selectUser} />
+          {/* User identity */}
+          <div style={styles.userChip}>
+            <span style={styles.userDot} />
+            {user.display_name}
+          </div>
 
           {/* Briefings button */}
-          {userId && (
-            <button
-              onClick={() => setBriefingsOpen(true)}
-              style={styles.briefingsBtn}
-              title="Agent briefings"
-            >
-              📋 Briefings
-              {unseenCount > 0 && (
-                <span style={styles.badge}>{unseenCount}</span>
-              )}
-            </button>
-          )}
+          <button
+            onClick={() => setBriefingsOpen(true)}
+            style={styles.briefingsBtn}
+            title="Agent briefings"
+          >
+            Briefings
+            {unseenCount > 0 && (
+              <span style={styles.badge}>{unseenCount}</span>
+            )}
+          </button>
+
+          {/* Logout */}
+          <button onClick={handleLogout} style={styles.logoutBtn} title="Sign out">
+            Sign out
+          </button>
         </div>
       </header>
 
@@ -216,9 +253,8 @@ export default function App() {
         />
       )}
 
-      {briefingsOpen && userId && (
+      {briefingsOpen && (
         <BriefingsPanel
-          userId={userId}
           onClose={() => { setBriefingsOpen(false); setUnseenCount(0) }}
         />
       )}
@@ -226,36 +262,6 @@ export default function App() {
   )
 }
 
-/* ── User Picker component ──────────────────────────────────────────────── */
-function UserPicker({ users, userId, onSelect }) {
-  const current = users.find(u => u.id === userId)
-
-  if (!users.length) {
-    return (
-      <div style={styles.pickerEmpty}>
-        No users seeded — run <code>python scripts/seed_agents.py</code>
-      </div>
-    )
-  }
-
-  return (
-    <div style={styles.pickerWrap}>
-      <span style={styles.pickerLabel}>Browsing as:</span>
-      <select
-        value={userId}
-        onChange={e => onSelect(e.target.value)}
-        style={styles.pickerSelect}
-      >
-        <option value="">— select user —</option>
-        {users.map(u => (
-          <option key={u.id} value={u.id}>{u.display_name}</option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
-/* ── Styles ─────────────────────────────────────────────────────────────── */
 const styles = {
   root: {
     display: 'flex', flexDirection: 'column',
@@ -272,21 +278,18 @@ const styles = {
     fontWeight: 700, fontSize: '17px', color: 'var(--c-orch)', letterSpacing: '-0.3px',
   },
   logoIcon: { fontSize: '20px' },
-  tagline: { fontSize: '12px', color: 'var(--text-muted)', marginRight: 'auto' },
+  tagline: { fontSize: '12px', color: 'var(--text-muted)' },
+  headerRight: { display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' },
 
-  headerRight: { display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' },
-
-  pickerWrap:  { display: 'flex', alignItems: 'center', gap: '6px' },
-  pickerLabel: { fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' },
-  pickerSelect: {
-    background: 'var(--surface-2)', border: '1px solid var(--border)',
-    color: 'var(--text)', borderRadius: '6px', padding: '4px 8px',
-    fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+  userChip: {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    fontSize: '12px', color: 'var(--text-muted)',
+    background: 'var(--surface-2)', borderRadius: '20px',
+    padding: '4px 10px', border: '1px solid var(--border)',
   },
-  pickerEmpty: {
-    fontSize: '11px', color: 'var(--text-dim)',
-    background: 'var(--surface-2)', borderRadius: '6px',
-    padding: '4px 8px', border: '1px solid var(--border)',
+  userDot: {
+    width: '6px', height: '6px', borderRadius: '50%',
+    background: 'var(--c-email)', flexShrink: 0,
   },
 
   briefingsBtn: {
@@ -294,12 +297,16 @@ const styles = {
     background: 'var(--surface-2)', border: '1px solid var(--border)',
     color: 'var(--text)', borderRadius: '6px', padding: '5px 10px',
     fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
-    position: 'relative',
   },
   badge: {
     background: 'var(--c-orch)', color: '#fff',
     borderRadius: '10px', padding: '1px 6px',
-    fontSize: '10px', fontWeight: 700, minWidth: '16px', textAlign: 'center',
+    fontSize: '10px', fontWeight: 700,
+  },
+  logoutBtn: {
+    background: 'none', border: '1px solid var(--border)',
+    color: 'var(--text-dim)', borderRadius: '6px', padding: '5px 10px',
+    fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
   },
 
   main: { display: 'flex', flex: 1, overflow: 'hidden' },

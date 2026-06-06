@@ -8,6 +8,7 @@ export default defineConfig({
       '/chat':           'http://localhost:8000',
       '/confirm-email':  'http://localhost:8000',
       '/health':         'http://localhost:8000',
+      '/auth':           'http://localhost:8000',
       '/agent-card':     'http://localhost:8000',
       '/briefings':      'http://localhost:8000',
       '/users':          'http://localhost:8000',

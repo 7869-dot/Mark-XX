@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetch } from '../api.js'
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 const AGENT_COLOR = {
@@ -10,17 +11,14 @@ const STATUS_BADGE = {
   proposed:          { label: 'Pending review',    color: '#f0883e' },
   approved_by_a:     { label: 'Awaiting partner',  color: '#58a6ff' },
   approved_by_b:     { label: 'Awaiting you',      color: '#58a6ff' },
-  approved:          { label: '✓ Connected',        color: 'var(--c-email)' },
-  rejected:          { label: '✗ Declined',         color: 'var(--c-error)' },
+  approved:          { label: 'Connected',          color: 'var(--c-email)' },
+  rejected:          { label: 'Declined',           color: 'var(--c-error)' },
   expired:           { label: 'Expired',            color: 'var(--text-dim)' },
 }
 
-/* ── API helpers ─────────────────────────────────────────────────────────── */
-function api(path, opts = {}, userId) {
-  return fetch(path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', 'X-User-Id': userId, ...opts.headers },
-  })
+/* ── API helpers (JWT auth handled by apiFetch) ──────────────────────────── */
+function api(path, opts = {}) {
+  return apiFetch(path, opts)
 }
 
 /* ── Sub-components ──────────────────────────────────────────────────────── */
@@ -54,7 +52,7 @@ function TranscriptView({ messages }) {
   )
 }
 
-function BriefingCard({ briefing, userId, onUpdate }) {
+function BriefingCard({ briefing, onUpdate }) {
   const [expanded, setExpanded]   = useState(false)
   const [busy, setBusy]           = useState(false)
   const [feedback, setFeedback]   = useState(null)
@@ -69,7 +67,6 @@ function BriefingCard({ briefing, userId, onUpdate }) {
       const res = await api(
         `/briefings/${briefing.id}/${action}`,
         { method: 'POST' },
-        userId,
       )
       const data = await res.json()
       setFeedback({ ok: res.ok, msg: data.message || (res.ok ? 'Done' : data.detail) })
@@ -146,7 +143,7 @@ function BriefingCard({ briefing, userId, onUpdate }) {
 }
 
 /* ── Main panel ──────────────────────────────────────────────────────────── */
-export default function BriefingsPanel({ userId, onClose }) {
+export default function BriefingsPanel({ onClose }) {
   const [briefings, setBriefings] = useState([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState(null)
@@ -156,7 +153,7 @@ export default function BriefingsPanel({ userId, onClose }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await api(`/briefings?include_seen=${showAll}`, {}, userId)
+      const res = await api(`/briefings?include_seen=${showAll}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setBriefings(await res.json())
     } catch (e) {
@@ -164,7 +161,7 @@ export default function BriefingsPanel({ userId, onClose }) {
     } finally {
       setLoading(false)
     }
-  }, [userId, showAll])
+  }, [showAll])
 
   useEffect(() => { load() }, [load])
 
@@ -217,7 +214,6 @@ export default function BriefingsPanel({ userId, onClose }) {
             <BriefingCard
               key={b.id}
               briefing={b}
-              userId={userId}
               onUpdate={load}
             />
           ))}

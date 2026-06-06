@@ -10,3 +10,7 @@ pydantic==2.9.2
 # A2A layer
 sqlalchemy==2.0.35
 apscheduler==3.10.4
+
+# Auth (Phase 2)
+python-jose[cryptography]==3.3.0
+cryptography>=42.0.0

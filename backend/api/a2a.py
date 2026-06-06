@@ -1,19 +1,27 @@
 """FastAPI router for all A2A (Agent-to-Agent) endpoints.
 
-Auth model (dev): pass your user UUID as the `X-User-Id` header.
-In production this would be replaced with a proper JWT/session check.
+Auth model (Phase 2)
+────────────────────
+All user-scoped endpoints require a valid JWT in the Authorization header:
+    Authorization: Bearer <jwt>
+
+The JWT is issued by GET /auth/callback after Google OAuth login.
+
+DEV_MODE fallback: if DEV_MODE=true in .env, the legacy X-User-Id header is
+accepted as a fallback so seeded users can be tested without Google OAuth.
+Set DEV_MODE=false (default) in any environment accessible from the internet.
 
 Safety invariants upheld here
 ──────────────────────────────
-• Contact details are NEVER returned by any endpoint until status == "approved".
+• A user can ONLY act as the identity encoded in their own JWT.
+• Contact details are NEVER returned until status == "approved".
 • Private AgentCard fields do not exist — the model only stores public data.
-• Approve is the ONLY transition that moves a proposal toward contact exchange.
+• Approve is the ONLY transition toward contact exchange.
 """
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -21,6 +29,8 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 import matchmaker
+from auth import verify_jwt
+from config import DEV_MODE
 from db import get_db
 from models import (
     A2AMessage, AgentCard, Briefing, ConnectionProposal, User,
@@ -30,10 +40,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ── Auth dependency (dev) ──────────────────────────────────────────────────────
+# ── Auth dependency ────────────────────────────────────────────────────────────
 
-async def current_user_id(x_user_id: str = Header(...)) -> str:
-    return x_user_id
+async def current_user_id(
+    authorization: str | None = Header(None),
+    x_user_id:    str | None = Header(None),
+) -> str:
+    """
+    Resolve the calling user's ID.
+
+    Priority:
+      1. JWT in Authorization: Bearer <token>  (always accepted)
+      2. X-User-Id header                      (only when DEV_MODE=true)
+
+    Raises HTTP 401 if neither is present / valid.
+    """
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            return verify_jwt(authorization[7:])
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid or expired JWT")
+
+    if DEV_MODE and x_user_id:
+        return x_user_id
+
+    raise HTTPException(
+        status_code=401,
+        detail=(
+            "Authentication required. Send 'Authorization: Bearer <jwt>'. "
+            + ("X-User-Id accepted in DEV_MODE." if DEV_MODE else "")
+        ),
+    )
 
 
 # ── Pydantic schemas ───────────────────────────────────────────────────────────

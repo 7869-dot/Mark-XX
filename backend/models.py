@@ -3,11 +3,19 @@
 Design notes
 ────────────
 • All IDs are UUID strings — portable, no auto-increment races.
-• JSON columns (tags, embedding) are stored as TEXT in SQLite; SQLAlchemy
-  handles (de)serialisation transparently.
-• `updated_at` is refreshed in Python (not via DB triggers) for SQLite compat.
-• Private fields (email, real name) are NEVER stored on AgentCard — only the
-  public profile the user explicitly published.
+• JSON columns (tags, embedding) stored as TEXT in SQLite; SQLAlchemy handles serde.
+• `updated_at` refreshed in Python (not via DB triggers) for SQLite compat.
+• Private fields (email, OAuth tokens) are NEVER on AgentCard — only public profile.
+• OAuth tokens are stored encrypted at rest (see auth.py encrypt_token).
+
+Adding new columns
+──────────────────
+SQLite does not support modifying existing columns.  When a new column is added
+here, either:
+  (a) delete axolotl.db and restart (dev), or
+  (b) run `ALTER TABLE <table> ADD COLUMN ...` manually.
+`init_db()` in db.py also calls `upgrade_db()` which does option (b) for known
+new columns automatically.
 """
 import uuid
 from datetime import datetime
@@ -37,6 +45,34 @@ class User(Base):
     display_name = Column(String, nullable=False)
     created_at   = Column(DateTime, default=_now)
 
+    # Added in Phase 2 — nullable so seed users (no OAuth) still work.
+    # upgrade_db() in db.py adds these columns to existing DBs automatically.
+    google_sub   = Column(String, unique=True, nullable=True)   # Google's stable user ID
+    email        = Column(String, nullable=True)                 # from Google id_token
+
+
+# ── OAuth Tokens ───────────────────────────────────────────────────────────────
+
+class OAuthToken(Base):
+    """
+    Server-side storage for Google OAuth tokens.
+
+    SECURITY:
+    • access_token_enc and refresh_token_enc are Fernet-encrypted.
+    • Raw tokens are NEVER returned to the client — only JWTs are.
+    • Refresh happens server-side in auth.get_valid_access_token().
+    """
+    __tablename__ = "oauth_tokens"
+
+    id                = Column(String, primary_key=True, default=_uuid)
+    user_id           = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
+    access_token_enc  = Column(Text, nullable=False)   # encrypted
+    refresh_token_enc = Column(Text, default="")       # encrypted; may be empty on re-auth
+    token_type        = Column(String, default="Bearer")
+    scopes            = Column(Text, default="")       # space-separated scope list
+    expires_at        = Column(DateTime, nullable=False)
+    updated_at        = Column(DateTime, default=_now)
+
 
 # ── Agent Cards ────────────────────────────────────────────────────────────────
 
@@ -47,21 +83,17 @@ class AgentCard(Base):
     id           = Column(String, primary_key=True, default=_uuid)
     user_id      = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
 
-    # Public profile fields
     display_name = Column(String, nullable=False)
     public_bio   = Column(Text, default="")
-    building     = Column(Text, default="")      # what they're building
-    looking_for  = Column(Text, default="")      # what collaboration they want
-    can_offer    = Column(Text, default="")      # what they bring to the table
-    tags         = Column(JSON, default=list)    # ["fintech", "open-source", ...]
-
-    # Similarity vector (list[float]).  Computed from text fields.
-    # TODO: replace with a real embedding model (e.g. voyage-3) when ready.
+    building     = Column(Text, default="")
+    looking_for  = Column(Text, default="")
+    can_offer    = Column(Text, default="")
+    tags         = Column(JSON, default=list)
+    # TODO: replace with a real embedding model (voyage-3, text-embedding-3-small)
     embedding    = Column(JSON, default=list)
 
-    is_public    = Column(Boolean, default=True)  # false = hidden from discovery
-    a2a_enabled  = Column(Boolean, default=True)  # opt-in to autonomous matchmaking
-
+    is_public    = Column(Boolean, default=True)
+    a2a_enabled  = Column(Boolean, default=True)
     updated_at   = Column(DateTime, default=_now)
 
 
@@ -69,27 +101,26 @@ class AgentCard(Base):
 
 class ConnectionProposal(Base):
     """
-    Lifecycle: proposed → (approved_by_a + approved_by_b → approved) | rejected | expired
+    Lifecycle: proposed → approved_by_a / approved_by_b → approved | rejected | expired
 
-    Safety: only the approved state unlocks contact exchange.  All earlier
-    states are opaque — neither party sees the other's contact info.
+    Safety: only the 'approved' state unlocks contact exchange.
+    TODO: contact exchange must require MUTUAL approval (both users approve their
+    own briefing) before any contact data is shared — one user cannot consent on
+    the other's behalf.  The current state machine enforces both approvals before
+    status reaches 'approved', but the actual secure exchange mechanism is not yet
+    implemented (see api/a2a.py approve_briefing).
     """
     __tablename__ = "connection_proposals"
 
     id                     = Column(String, primary_key=True, default=_uuid)
     agent_a_id             = Column(String, ForeignKey("agent_cards.id"), nullable=False)
     agent_b_id             = Column(String, ForeignKey("agent_cards.id"), nullable=False)
-
-    # candidate | negotiating | proposed | approved_by_a | approved_by_b
-    # | approved | rejected | expired
     status                 = Column(String, default="proposed", nullable=False)
-
     match_score            = Column(Float, default=0.0)
     match_reason           = Column(Text, default="")
-    proposed_collaboration = Column(Text, default="")  # the idea
+    proposed_collaboration = Column(Text, default="")
     what_each_brings       = Column(Text, default="")
     confidence             = Column(Float, default=0.0)
-
     created_at             = Column(DateTime, default=_now)
     updated_at             = Column(DateTime, default=_now)
 
@@ -97,34 +128,26 @@ class ConnectionProposal(Base):
 # ── A2A Negotiation Messages ───────────────────────────────────────────────────
 
 class A2AMessage(Base):
-    """Full transcript of the inter-agent negotiation (append-only log)."""
     __tablename__ = "a2a_messages"
 
-    id          = Column(String, primary_key=True, default=_uuid)
-    proposal_id = Column(String, ForeignKey("connection_proposals.id"), nullable=False)
+    id            = Column(String, primary_key=True, default=_uuid)
+    proposal_id   = Column(String, ForeignKey("connection_proposals.id"), nullable=False)
     from_agent_id = Column(String, ForeignKey("agent_cards.id"), nullable=False)
-    role        = Column(String, nullable=False)   # "agent_a" | "agent_b"
-    content     = Column(Text, nullable=False)
-    turn        = Column(Integer, nullable=False)
-    created_at  = Column(DateTime, default=_now)
+    role          = Column(String, nullable=False)
+    content       = Column(Text, nullable=False)
+    turn          = Column(Integer, nullable=False)
+    created_at    = Column(DateTime, default=_now)
 
 
 # ── Briefings ──────────────────────────────────────────────────────────────────
 
 class Briefing(Base):
-    """
-    Human-readable summary delivered to a user on their next login.
-    One briefing per user per proposal (both users in a pair get their own).
-    """
     __tablename__ = "briefings"
 
-    id            = Column(String, primary_key=True, default=_uuid)
-    user_id       = Column(String, ForeignKey("users.id"), nullable=False)
-    proposal_id   = Column(String, ForeignKey("connection_proposals.id"), nullable=False)
-
-    # Written by the matchmaker after the negotiation verdict
+    id             = Column(String, primary_key=True, default=_uuid)
+    user_id        = Column(String, ForeignKey("users.id"), nullable=False)
+    proposal_id    = Column(String, ForeignKey("connection_proposals.id"), nullable=False)
     summary        = Column(Text, nullable=False)
     recommendation = Column(Text, nullable=False)
-
-    seen       = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=_now)
+    seen           = Column(Boolean, default=False)
+    created_at     = Column(DateTime, default=_now)
