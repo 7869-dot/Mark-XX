@@ -1,18 +1,68 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import ChatWindow from './components/ChatWindow.jsx'
 import AgentActivity from './components/AgentActivity.jsx'
 import EmailConfirm from './components/EmailConfirm.jsx'
+import BriefingsPanel from './components/BriefingsPanel.jsx'
 
+/* ── User picker helpers ────────────────────────────────────────────────── */
+const LS_KEY = 'axolotl_user_id'
+
+function loadStoredUserId() {
+  try { return localStorage.getItem(LS_KEY) || '' } catch { return '' }
+}
+function storeUserId(id) {
+  try { localStorage.setItem(LS_KEY, id) } catch {}
+}
+
+/* ── Main App ────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [messages, setMessages]     = useState([])
+  const [messages, setMessages]       = useState([])
   const [agentEvents, setAgentEvents] = useState([])
-  const [emailDraft, setEmailDraft] = useState(null)   // {draft_id, to, subject, body}
-  const [isLoading, setIsLoading]   = useState(false)
+  const [emailDraft, setEmailDraft]   = useState(null)
+  const [isLoading, setIsLoading]     = useState(false)
   const [activeAgent, setActiveAgent] = useState(null)
 
-  // Accumulate streaming tokens without stale-closure issues
+  // A2A / user state
+  const [userId, setUserId]           = useState(loadStoredUserId)
+  const [users, setUsers]             = useState([])    // [{id, display_name}]
+  const [briefingsOpen, setBriefingsOpen] = useState(false)
+  const [unseenCount, setUnseenCount] = useState(0)
+
   const streamRef = useRef('')
 
+  /* ── Load users list for picker ──────────────────────────────────────── */
+  useEffect(() => {
+    fetch('/users')
+      .then(r => r.ok ? r.json() : [])
+      .then(setUsers)
+      .catch(() => {})
+  }, [])
+
+  /* ── Poll unseen briefing count when a userId is set ─────────────────── */
+  useEffect(() => {
+    if (!userId) { setUnseenCount(0); return }
+    let active = true
+    async function poll() {
+      try {
+        const res = await fetch('/briefings', { headers: { 'X-User-Id': userId } })
+        if (res.ok && active) {
+          const data = await res.json()
+          setUnseenCount(data.length)
+        }
+      } catch {}
+    }
+    poll()
+    const id = setInterval(poll, 30_000)
+    return () => { active = false; clearInterval(id) }
+  }, [userId])
+
+  function selectUser(id) {
+    setUserId(id)
+    storeUserId(id)
+    setUnseenCount(0)
+  }
+
+  /* ── Chat / SSE ──────────────────────────────────────────────────────── */
   const addAgentEvent = useCallback((evt) => {
     setAgentEvents(prev => [...prev, { ...evt, ts: Date.now() }])
   }, [])
@@ -23,18 +73,14 @@ export default function App() {
         setActiveAgent(event.agent)
         addAgentEvent({ kind: 'start', agent: event.agent, message: event.message })
         break
-
       case 'agent_step':
         addAgentEvent({ kind: 'step', agent: event.agent, message: event.message })
         break
-
       case 'agent_result':
         addAgentEvent({ kind: 'result', agent: event.agent, message: event.message })
         break
-
       case 'token':
         streamRef.current += event.text
-        // Use a sentinel message id so we can replace the streaming bubble
         setMessages(prev => {
           const last = prev[prev.length - 1]
           if (last?.streaming) {
@@ -43,12 +89,10 @@ export default function App() {
           return [...prev, { id: 'streaming', role: 'assistant', content: streamRef.current, streaming: true }]
         })
         break
-
       case 'email_draft':
         setEmailDraft({ ...event.draft, draft_id: event.draft_id })
         addAgentEvent({ kind: 'draft', agent: 'email', message: 'Email draft ready — review below' })
         break
-
       case 'done': {
         const final = streamRef.current || event.result || ''
         streamRef.current = ''
@@ -57,15 +101,12 @@ export default function App() {
           if (last?.streaming) {
             return [...prev.slice(0, -1), { id: Date.now(), role: 'assistant', content: final, streaming: false }]
           }
-          return final
-            ? [...prev, { id: Date.now(), role: 'assistant', content: final }]
-            : prev
+          return final ? [...prev, { id: Date.now(), role: 'assistant', content: final }] : prev
         })
         setIsLoading(false)
         setActiveAgent(null)
         break
       }
-
       case 'error':
         streamRef.current = ''
         setMessages(prev => [
@@ -80,7 +121,6 @@ export default function App() {
 
   const sendMessage = useCallback(async (text) => {
     if (!text.trim() || isLoading) return
-
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: text }])
     setAgentEvents([])
     setIsLoading(true)
@@ -93,7 +133,6 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
       })
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const reader = res.body.getReader()
@@ -103,16 +142,12 @@ export default function App() {
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
-
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split('\n')
-        buf = lines.pop()               // keep partial last line
-
+        buf = lines.pop()
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
-          try {
-            handleEvent(JSON.parse(line.slice(6)))
-          } catch { /* skip malformed */ }
+          try { handleEvent(JSON.parse(line.slice(6))) } catch {}
         }
       }
     } catch (err) {
@@ -129,11 +164,7 @@ export default function App() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Send failed')
-
-      setMessages(prev => [
-        ...prev,
-        { id: Date.now(), role: 'system', content: `✓ Email sent to ${edited.to}` },
-      ])
+      setMessages(prev => [...prev, { id: Date.now(), role: 'system', content: `✓ Email sent to ${edited.to}` }])
       setEmailDraft(null)
     } catch (err) {
       alert(`Failed to send email: ${err.message}`)
@@ -142,29 +173,41 @@ export default function App() {
 
   return (
     <div style={styles.root}>
-      {/* Header */}
+      {/* ── Header ────────────────────────────────────────────────────── */}
       <header style={styles.header}>
         <span style={styles.logo}>
           <span style={styles.logoIcon}>🦎</span>
           Axolotl
         </span>
         <span style={styles.tagline}>The next frontier of AI agents</span>
+
+        <div style={styles.headerRight}>
+          {/* User picker */}
+          <UserPicker users={users} userId={userId} onSelect={selectUser} />
+
+          {/* Briefings button */}
+          {userId && (
+            <button
+              onClick={() => setBriefingsOpen(true)}
+              style={styles.briefingsBtn}
+              title="Agent briefings"
+            >
+              📋 Briefings
+              {unseenCount > 0 && (
+                <span style={styles.badge}>{unseenCount}</span>
+              )}
+            </button>
+          )}
+        </div>
       </header>
 
-      {/* Main layout */}
+      {/* ── Main layout ───────────────────────────────────────────────── */}
       <div style={styles.main}>
-        <ChatWindow
-          messages={messages}
-          isLoading={isLoading}
-          onSend={sendMessage}
-        />
-        <AgentActivity
-          events={agentEvents}
-          activeAgent={activeAgent}
-        />
+        <ChatWindow messages={messages} isLoading={isLoading} onSend={sendMessage} />
+        <AgentActivity events={agentEvents} activeAgent={activeAgent} />
       </div>
 
-      {/* Email confirmation modal */}
+      {/* ── Modals ────────────────────────────────────────────────────── */}
       {emailDraft && (
         <EmailConfirm
           draft={emailDraft}
@@ -172,46 +215,92 @@ export default function App() {
           onCancel={() => setEmailDraft(null)}
         />
       )}
+
+      {briefingsOpen && userId && (
+        <BriefingsPanel
+          userId={userId}
+          onClose={() => { setBriefingsOpen(false); setUnseenCount(0) }}
+        />
+      )}
     </div>
   )
 }
 
+/* ── User Picker component ──────────────────────────────────────────────── */
+function UserPicker({ users, userId, onSelect }) {
+  const current = users.find(u => u.id === userId)
+
+  if (!users.length) {
+    return (
+      <div style={styles.pickerEmpty}>
+        No users seeded — run <code>python scripts/seed_agents.py</code>
+      </div>
+    )
+  }
+
+  return (
+    <div style={styles.pickerWrap}>
+      <span style={styles.pickerLabel}>Browsing as:</span>
+      <select
+        value={userId}
+        onChange={e => onSelect(e.target.value)}
+        style={styles.pickerSelect}
+      >
+        <option value="">— select user —</option>
+        {users.map(u => (
+          <option key={u.id} value={u.id}>{u.display_name}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+/* ── Styles ─────────────────────────────────────────────────────────────── */
 const styles = {
   root: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100dvh',
-    background: 'var(--bg)',
-    overflow: 'hidden',
+    display: 'flex', flexDirection: 'column',
+    height: '100dvh', background: 'var(--bg)', overflow: 'hidden',
   },
   header: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '0 24px',
-    height: '52px',
+    display: 'flex', alignItems: 'center', gap: '12px',
+    padding: '0 20px', height: '52px',
     borderBottom: '1px solid var(--border)',
-    background: 'var(--surface)',
-    flexShrink: 0,
+    background: 'var(--surface)', flexShrink: 0,
   },
   logo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontWeight: 700,
-    fontSize: '17px',
-    color: 'var(--c-orch)',
-    letterSpacing: '-0.3px',
+    display: 'flex', alignItems: 'center', gap: '8px',
+    fontWeight: 700, fontSize: '17px', color: 'var(--c-orch)', letterSpacing: '-0.3px',
   },
   logoIcon: { fontSize: '20px' },
-  tagline: {
-    fontSize: '12px',
-    color: 'var(--text-muted)',
-    marginLeft: '4px',
+  tagline: { fontSize: '12px', color: 'var(--text-muted)', marginRight: 'auto' },
+
+  headerRight: { display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto' },
+
+  pickerWrap:  { display: 'flex', alignItems: 'center', gap: '6px' },
+  pickerLabel: { fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' },
+  pickerSelect: {
+    background: 'var(--surface-2)', border: '1px solid var(--border)',
+    color: 'var(--text)', borderRadius: '6px', padding: '4px 8px',
+    fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
   },
-  main: {
-    display: 'flex',
-    flex: 1,
-    overflow: 'hidden',
+  pickerEmpty: {
+    fontSize: '11px', color: 'var(--text-dim)',
+    background: 'var(--surface-2)', borderRadius: '6px',
+    padding: '4px 8px', border: '1px solid var(--border)',
   },
+
+  briefingsBtn: {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    background: 'var(--surface-2)', border: '1px solid var(--border)',
+    color: 'var(--text)', borderRadius: '6px', padding: '5px 10px',
+    fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+    position: 'relative',
+  },
+  badge: {
+    background: 'var(--c-orch)', color: '#fff',
+    borderRadius: '10px', padding: '1px 6px',
+    fontSize: '10px', fontWeight: 700, minWidth: '16px', textAlign: 'center',
+  },
+
+  main: { display: 'flex', flex: 1, overflow: 'hidden' },
 }
