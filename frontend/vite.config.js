@@ -12,7 +12,10 @@ export default defineConfig({
       '/agent-card':     'http://localhost:8000',
       '/briefings':      'http://localhost:8000',
       '/users':          'http://localhost:8000',
-      '/admin':          'http://localhost:8000',
+      '/admin':             'http://localhost:8000',
+      '/briefing':          'http://localhost:8000',
+      '/proposed-actions':  'http://localhost:8000',
+      '/nudges':            'http://localhost:8000',
     },
   },
 })

@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
 
 const AGENT_META = {
-  orchestrator: { label: 'Orchestrator', color: 'var(--c-orch)',  icon: '🦎' },
-  web:          { label: 'Web Agent',    color: 'var(--c-web)',   icon: '🌐' },
-  email:        { label: 'Email Agent',  color: 'var(--c-email)', icon: '✉️' },
+  orchestrator: { label: 'Jarvis',            color: 'var(--c-orch)',        icon: '🦎' },
+  web:          { label: 'Web Agent',         color: 'var(--c-web)',         icon: '🌐' },
+  email:        { label: 'Email Agent',       color: 'var(--c-email)',       icon: '✉️' },
+  schedule:     { label: 'Schedule Agent',    color: 'var(--c-schedule)',    icon: '📅' },
+  connection:   { label: 'Connection Agent',  color: 'var(--c-connection)',  icon: '🔗' },
 }
 
 const KIND_STYLE = {

@@ -55,3 +55,47 @@ export async function apiPost(path, body) {
     body: JSON.stringify(body),
   })
 }
+
+/* ── Phase 3 endpoints ───────────────────────────────────────────────── */
+
+export async function getBriefing() {
+  const res = await apiGet('/briefing')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function getProposedActions(status = 'pending') {
+  const res = await apiGet(`/proposed-actions?status=${status}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function approveAction(id) {
+  const res = await apiPost(`/proposed-actions/${id}/approve`)
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function rejectAction(id) {
+  const res = await apiPost(`/proposed-actions/${id}/reject`)
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}))
+    throw new Error(d.detail || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function getNudges() {
+  const res = await apiGet('/nudges')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function dismissNudge(id) {
+  const res = await apiPost(`/nudges/${id}/dismiss`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}

@@ -1,17 +1,24 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import ChatWindow from './components/ChatWindow.jsx'
 import AgentActivity from './components/AgentActivity.jsx'
 import EmailConfirm from './components/EmailConfirm.jsx'
-import BriefingsPanel from './components/BriefingsPanel.jsx'
 import LoginPage from './components/LoginPage.jsx'
-import { getJwt, setJwt, clearJwt, isAuthenticated, authHeaders, apiFetch } from './api.js'
+import BriefingCard from './components/BriefingCard.jsx'
+import NudgeFeed from './components/NudgeFeed.jsx'
+import SubAgentTabs from './components/SubAgentTabs.jsx'
+import {
+  getJwt, setJwt, clearJwt, isAuthenticated, authHeaders, apiFetch,
+  getBriefing, getProposedActions, approveAction, rejectAction,
+  getNudges, dismissNudge,
+} from './api.js'
 
 export default function App() {
-  /* ── Auth state ──────────────────────────────────────────────────────── */
-  const [authReady, setAuthReady]   = useState(false)   // finished checking JWT
-  const [user, setUser]             = useState(null)     // {id, display_name, email}
+  /* ── Auth ────────────────────────────────────────────────────────────── */
+  const [authReady, setAuthReady] = useState(false)
+  const [user, setUser]           = useState(null)
 
-  /* ── Chat state ──────────────────────────────────────────────────────── */
+  /* ── Chat ────────────────────────────────────────────────────────────── */
   const [messages, setMessages]     = useState([])
   const [agentEvents, setAgentEvents] = useState([])
   const [emailDraft, setEmailDraft] = useState(null)
@@ -19,34 +26,36 @@ export default function App() {
   const [activeAgent, setActiveAgent] = useState(null)
   const streamRef = useRef('')
 
-  /* ── Briefings state ─────────────────────────────────────────────────── */
-  const [briefingsOpen, setBriefingsOpen] = useState(false)
-  const [unseenCount, setUnseenCount]     = useState(0)
+  /* ── Briefing ────────────────────────────────────────────────────────── */
+  const [briefing, setBriefing]             = useState(null)
+  const [briefingDismissed, setBriefingDismissed] = useState(false)
 
-  /* ── 1. On mount: harvest token from URL or check localStorage ───────── */
+  /* ── Proposed actions ────────────────────────────────────────────────── */
+  const [proposedActions, setProposedActions] = useState([])
+
+  /* ── Nudges ──────────────────────────────────────────────────────────── */
+  const [nudges, setNudges] = useState([])
+
+  /* ── 1. Boot: harvest token, fetch user ──────────────────────────────── */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
+    const params   = new URLSearchParams(window.location.search)
     const urlToken = params.get('token')
     if (urlToken) {
       setJwt(urlToken)
-      // Remove token from URL so it's not in browser history
       window.history.replaceState({}, '', window.location.pathname)
     }
-
-    if (isAuthenticated()) {
-      fetchMe()
-    } else {
-      setAuthReady(true)
-    }
+    if (isAuthenticated()) fetchMe()
+    else setAuthReady(true)
   }, [])
 
   async function fetchMe() {
     try {
       const res = await apiFetch('/auth/me')
       if (res.ok) {
-        setUser(await res.json())
+        const u = await res.json()
+        setUser(u)
+        loadOnLogin()
       } else {
-        // JWT might be expired — clear it and show login
         clearJwt()
       }
     } catch {
@@ -61,26 +70,97 @@ export default function App() {
     setUser(null)
     setMessages([])
     setAgentEvents([])
+    setBriefing(null)
+    setProposedActions([])
+    setNudges([])
   }
 
-  /* ── 2. Poll unseen briefings count ──────────────────────────────────── */
-  useEffect(() => {
-    if (!user) { setUnseenCount(0); return }
-    let active = true
+  /* ── 2. On-login data load ───────────────────────────────────────────── */
+  async function loadOnLogin() {
+    // Run in parallel; failures are silent — each is best-effort
+    await Promise.allSettled([
+      loadBriefing(),
+      loadProposedActions(),
+      loadNudges(),
+    ])
+  }
 
-    async function poll() {
-      try {
-        const res = await apiFetch('/briefings')
-        if (res.ok && active) setUnseenCount((await res.json()).length)
-      } catch {}
+  async function loadBriefing() {
+    try {
+      const data = await getBriefing()
+      setBriefing(data)
+      // Briefing may include pre-drafted proposed_actions
+      if (data.proposed_actions?.length) {
+        setProposedActions(prev => {
+          const existing = new Set(prev.map(a => a.id))
+          const fresh    = data.proposed_actions.filter(a => !existing.has(a.id))
+          return [...fresh, ...prev]
+        })
+      }
+    } catch (e) {
+      console.warn('Briefing load failed:', e.message)
     }
+  }
 
-    poll()
-    const id = setInterval(poll, 30_000)
-    return () => { active = false; clearInterval(id) }
+  async function loadProposedActions() {
+    try {
+      const data = await getProposedActions()
+      setProposedActions(data)
+    } catch (e) {
+      console.warn('Proposed actions load failed:', e.message)
+    }
+  }
+
+  async function loadNudges() {
+    try {
+      const data = await getNudges()
+      setNudges(data)
+    } catch (e) {
+      console.warn('Nudges load failed:', e.message)
+    }
+  }
+
+  /* ── 3. Periodic nudge polling ───────────────────────────────────────── */
+  useEffect(() => {
+    if (!user) return
+    const id = setInterval(loadNudges, 60_000)
+    return () => clearInterval(id)
   }, [user])
 
-  /* ── 3. Chat / SSE ───────────────────────────────────────────────────── */
+  /* ── 4. Proposed-action approve / reject ─────────────────────────────── */
+  const handleApproveAction = useCallback(async (id, editedPayload) => {
+    // For email_reply the caller may pass an edited payload
+    if (editedPayload) {
+      // Patch the local state so the card shows the edited content
+      setProposedActions(prev =>
+        prev.map(a => a.id === id ? { ...a, payload: { ...a.payload, ...editedPayload } } : a)
+      )
+    }
+    await approveAction(id)
+    // Mark approved locally
+    setProposedActions(prev =>
+      prev.map(a => a.id === id ? { ...a, status: 'approved' } : a)
+    )
+  }, [])
+
+  const handleRejectAction = useCallback(async (id) => {
+    await rejectAction(id)
+    setProposedActions(prev =>
+      prev.map(a => a.id === id ? { ...a, status: 'rejected' } : a)
+    )
+  }, [])
+
+  /* ── 5. Nudge dismiss ────────────────────────────────────────────────── */
+  const handleDismissNudge = useCallback(async (id) => {
+    try {
+      await dismissNudge(id)
+      setNudges(prev => prev.filter(n => n.id !== id))
+    } catch (e) {
+      console.warn('Dismiss nudge failed:', e.message)
+    }
+  }, [])
+
+  /* ── 6. Chat / SSE ───────────────────────────────────────────────────── */
   const addAgentEvent = useCallback((evt) => {
     setAgentEvents(prev => [...prev, { ...evt, ts: Date.now() }])
   }, [])
@@ -111,6 +191,14 @@ export default function App() {
         setEmailDraft({ ...event.draft, draft_id: event.draft_id })
         addAgentEvent({ kind: 'draft', agent: 'email', message: 'Email draft ready — review below' })
         break
+      case 'proposed_action_created': {
+        const action = { ...event.action, status: 'pending', created_at: new Date().toISOString() }
+        setProposedActions(prev => {
+          if (prev.some(a => a.id === action.id)) return prev
+          return [action, ...prev]
+        })
+        break
+      }
       case 'done': {
         const final = streamRef.current || event.result || ''
         streamRef.current = ''
@@ -147,16 +235,15 @@ export default function App() {
 
     try {
       const res = await fetch('/chat', {
-        method: 'POST',
+        method:  'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ message: text }),
+        body:    JSON.stringify({ message: text }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-      const reader = res.body.getReader()
+      const reader  = res.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
-
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
@@ -175,10 +262,10 @@ export default function App() {
 
   const handleEmailSend = useCallback(async (edited) => {
     try {
-      const res = await fetch('/confirm-email', {
-        method: 'POST',
+      const res  = await fetch('/confirm-email', {
+        method:  'POST',
         headers: authHeaders(),
-        body: JSON.stringify(edited),
+        body:    JSON.stringify(edited),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Send failed')
@@ -189,7 +276,7 @@ export default function App() {
     }
   }, [])
 
-  /* ── Render ──────────────────────────────────────────────────────────── */
+  /* ── Render gates ────────────────────────────────────────────────────── */
   if (!authReady) {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
@@ -197,65 +284,74 @@ export default function App() {
       </div>
     )
   }
+  if (!user) return <LoginPage />
 
-  if (!user) {
-    return <LoginPage />
-  }
+  const undismissedNudges   = nudges.filter(n => !n.dismissed)
+  const showBriefing        = briefing && !briefingDismissed
 
+  /* ── Main layout ─────────────────────────────────────────────────────── */
   return (
     <div style={styles.root}>
-      {/* ── Header ────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <header style={styles.header}>
         <span style={styles.logo}>
           <span style={styles.logoIcon}>🦎</span>
-          Axolotl
+          Jarvis
         </span>
-        <span style={styles.tagline}>The next frontier of AI agents</span>
+        <span style={styles.tagline}>chief of staff</span>
 
         <div style={styles.headerRight}>
-          {/* User identity */}
           <div style={styles.userChip}>
             <span style={styles.userDot} />
             {user.display_name}
           </div>
-
-          {/* Briefings button */}
-          <button
-            onClick={() => setBriefingsOpen(true)}
-            style={styles.briefingsBtn}
-            title="Agent briefings"
-          >
-            Briefings
-            {unseenCount > 0 && (
-              <span style={styles.badge}>{unseenCount}</span>
-            )}
-          </button>
-
-          {/* Logout */}
-          <button onClick={handleLogout} style={styles.logoutBtn} title="Sign out">
-            Sign out
-          </button>
+          {proposedActions.filter(a => a.status === 'pending').length > 0 && (
+            <div style={styles.approvalChip}>
+              <span style={styles.approvalPip} />
+              {proposedActions.filter(a => a.status === 'pending').length} pending
+            </div>
+          )}
+          <button onClick={handleLogout} style={styles.logoutBtn}>Sign out</button>
         </div>
       </header>
 
-      {/* ── Main layout ───────────────────────────────────────────────── */}
-      <div style={styles.main}>
-        <ChatWindow messages={messages} isLoading={isLoading} onSend={sendMessage} />
-        <AgentActivity events={agentEvents} activeAgent={activeAgent} />
+      {/* ── Two-column body ─────────────────────────────────────────────── */}
+      <div style={styles.body}>
+        {/* LEFT — Jarvis hub */}
+        <div style={styles.leftCol}>
+          <AnimatePresence>
+            {showBriefing && (
+              <BriefingCard
+                briefing={briefing}
+                onDismiss={() => setBriefingDismissed(true)}
+              />
+            )}
+          </AnimatePresence>
+
+          <div style={styles.chatWrap}>
+            <ChatWindow messages={messages} isLoading={isLoading} onSend={sendMessage} />
+          </div>
+
+          <NudgeFeed nudges={undismissedNudges} onDismiss={handleDismissNudge} />
+        </div>
+
+        {/* RIGHT — sub-agent panels + approval surface */}
+        <div style={styles.rightCol}>
+          <SubAgentTabs
+            agentEvents={agentEvents}
+            proposedActions={proposedActions}
+            onApprove={handleApproveAction}
+            onReject={handleRejectAction}
+          />
+        </div>
       </div>
 
-      {/* ── Modals ────────────────────────────────────────────────────── */}
+      {/* ── Legacy email confirm modal ───────────────────────────────────── */}
       {emailDraft && (
         <EmailConfirm
           draft={emailDraft}
           onSend={handleEmailSend}
           onCancel={() => setEmailDraft(null)}
-        />
-      )}
-
-      {briefingsOpen && (
-        <BriefingsPanel
-          onClose={() => { setBriefingsOpen(false); setUnseenCount(0) }}
         />
       )}
     </div>
@@ -278,9 +374,8 @@ const styles = {
     fontWeight: 700, fontSize: '17px', color: 'var(--c-orch)', letterSpacing: '-0.3px',
   },
   logoIcon: { fontSize: '20px' },
-  tagline: { fontSize: '12px', color: 'var(--text-muted)' },
+  tagline: { fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '0.04em' },
   headerRight: { display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' },
-
   userChip: {
     display: 'flex', alignItems: 'center', gap: '6px',
     fontSize: '12px', color: 'var(--text-muted)',
@@ -291,23 +386,46 @@ const styles = {
     width: '6px', height: '6px', borderRadius: '50%',
     background: 'var(--c-email)', flexShrink: 0,
   },
-
-  briefingsBtn: {
-    display: 'flex', alignItems: 'center', gap: '6px',
-    background: 'var(--surface-2)', border: '1px solid var(--border)',
-    color: 'var(--text)', borderRadius: '6px', padding: '5px 10px',
-    fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+  approvalChip: {
+    display: 'flex', alignItems: 'center', gap: '5px',
+    fontSize: '11px', color: 'var(--c-approval)',
+    background: 'rgba(236,72,153,0.1)',
+    border: '1px solid rgba(236,72,153,0.3)',
+    borderRadius: '20px', padding: '3px 10px',
   },
-  badge: {
-    background: 'var(--c-orch)', color: '#fff',
-    borderRadius: '10px', padding: '1px 6px',
-    fontSize: '10px', fontWeight: 700,
+  approvalPip: {
+    width: '5px', height: '5px', borderRadius: '50%',
+    background: 'var(--c-approval)', flexShrink: 0,
+    animation: 'pulse 1.5s ease-in-out infinite',
   },
   logoutBtn: {
     background: 'none', border: '1px solid var(--border)',
     color: 'var(--text-dim)', borderRadius: '6px', padding: '5px 10px',
     fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
   },
-
-  main: { display: 'flex', flex: 1, overflow: 'hidden' },
+  body: {
+    display: 'flex', flex: 1, overflow: 'hidden',
+  },
+  leftCol: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    borderRight: '1px solid var(--border)',
+    overflow: 'hidden',
+  },
+  chatWrap: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  rightCol: {
+    width: '480px',
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
 }
