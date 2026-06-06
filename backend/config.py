@@ -53,3 +53,11 @@ A2A_MAX_TURNS:       int   = int(os.getenv("A2A_MAX_TURNS", "6"))
 A2A_TURN_TOKENS:     int   = int(os.getenv("A2A_TURN_TOKENS", "512"))
 A2A_COOLDOWN_DAYS:   int   = int(os.getenv("A2A_COOLDOWN_DAYS", "7"))
 A2A_SCHEDULE_MINUTES:int   = int(os.getenv("A2A_SCHEDULE_MINUTES", "60"))
+
+# ── Nudge engine ────────────────────────────────────────────────────────────────
+# Quiet hours: nudges are suppressed between QUIET_END and QUIET_START (UTC).
+# Rate cap: max nudges per user per day (prevents spam).
+NUDGE_RATE_CAP:          int = int(os.getenv("NUDGE_RATE_CAP", "5"))
+NUDGE_QUIET_HOURS_START: int = int(os.getenv("NUDGE_QUIET_HOURS_START", "22"))  # 10 pm UTC
+NUDGE_QUIET_HOURS_END:   int = int(os.getenv("NUDGE_QUIET_HOURS_END",   "8"))   # 8 am UTC
+NUDGE_SCHEDULE_MINUTES:  int = int(os.getenv("NUDGE_SCHEDULE_MINUTES",  "30"))

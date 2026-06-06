@@ -151,3 +151,54 @@ class Briefing(Base):
     recommendation = Column(Text, nullable=False)
     seen           = Column(Boolean, default=False)
     created_at     = Column(DateTime, default=_now)
+
+
+# ── Proposed Actions ───────────────────────────────────────────────────────────
+
+class ProposedAction(Base):
+    """
+    Jarvis queues an action here; the user approves or rejects it.
+
+    Types:
+      email_reply         — payload: {to, subject, body, in_reply_to_id?}
+      calendar_event      — payload: {title, start, end, description?, attendees?}
+      connection_approval — payload: {briefing_id, proposal_id, partner_name, summary}
+
+    Status lifecycle: pending → approved | rejected
+
+    Safety: approve endpoint executes the action (Gmail send / Calendar create /
+    connection unlock) ONLY after user confirms.  Connection contact exchange is
+    NOT yet implemented — see TODO in ConnectionProposal.
+    """
+    __tablename__ = "proposed_actions"
+
+    id         = Column(String, primary_key=True, default=_uuid)
+    user_id    = Column(String, ForeignKey("users.id"), nullable=False)
+    type       = Column(String, nullable=False)
+    payload    = Column(JSON,   nullable=False, default=dict)
+    rationale  = Column(Text,   default="")
+    status     = Column(String, default="pending", nullable=False)
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now)
+
+
+# ── Nudges ─────────────────────────────────────────────────────────────────────
+
+class Nudge(Base):
+    """
+    Proactive alerts written by the nudge engine.
+
+    Types: email | calendar | connection | general
+
+    Nudges are read-only from the user's perspective — they can only dismiss them.
+    Quiet hours and per-day rate cap (NUDGE_RATE_CAP) are enforced by the engine.
+    TODO: per-user timezone support (currently UTC is used for quiet hours).
+    """
+    __tablename__ = "nudges"
+
+    id         = Column(String, primary_key=True, default=_uuid)
+    user_id    = Column(String, ForeignKey("users.id"), nullable=False)
+    type       = Column(String, default="general", nullable=False)
+    message    = Column(Text, nullable=False)
+    dismissed  = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=_now)
