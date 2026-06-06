@@ -21,33 +21,41 @@ from tools.email_tools import send_email
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── APScheduler singleton guard ────────────────────────────────────────────────
+# Prevents double-registration when uvicorn --reload triggers multiple lifespan
+# cycles in the same process (rare, but possible in some reload modes).
+_scheduler: AsyncIOScheduler | None = None
 
-# ── Lifespan ───────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create DB tables on startup (no-op if they already exist)
+    global _scheduler
+
     init_db()
     logger.info("Database tables ready")
 
-    # Start background matchmaking scheduler
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        matchmaker.run_all,
-        "interval",
-        minutes=A2A_SCHEDULE_MINUTES,
-        id="matchmaker",
-        replace_existing=True,
-    )
-    scheduler.start()
-    logger.info("Matchmaker scheduled every %d minutes", A2A_SCHEDULE_MINUTES)
+    if _scheduler is None or not _scheduler.running:
+        _scheduler = AsyncIOScheduler()
+        _scheduler.add_job(
+            matchmaker.run_all,
+            "interval",
+            minutes=A2A_SCHEDULE_MINUTES,
+            id="matchmaker",
+            replace_existing=True,
+        )
+        _scheduler.start()
+        logger.info("Matchmaker scheduled every %d minutes", A2A_SCHEDULE_MINUTES)
+    else:
+        logger.info("Scheduler already running — skipping re-registration")
 
     yield
 
-    scheduler.shutdown(wait=False)
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
 
 
-app = FastAPI(title="Axolotl API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Axolotl API", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,10 +65,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the A2A router (agent cards, briefings, admin)
 app.include_router(a2a_router)
 
-# In-memory draft store (email approval). Replace with Redis for multi-process.
+# In-memory draft store. Replace with Redis for multi-process deployments.
 _pending_drafts: dict[str, dict] = {}
 
 
@@ -81,7 +88,7 @@ class ConfirmEmailRequest(BaseModel):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """SSE streaming endpoint. Each frame: `data: <json>\\n\\n`"""
+    """SSE streaming endpoint.  Each frame: `data: <json>\\n\\n`"""
 
     async def event_stream():
         queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -129,4 +136,4 @@ async def confirm_email(req: ConfirmEmailRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "model": "gemini-2.5-flash"}

@@ -1,22 +1,48 @@
-"""Axolotl Orchestrator — decides which agents to invoke and synthesises results."""
+"""Axolotl Orchestrator — decides which agents to invoke and synthesises results.
+
+Gemini migration notes
+──────────────────────
+• Async Gemini client (client.aio.models.generate_content) so the event loop
+  is never blocked by LLM calls.
+• Sub-agents (web, email) remain synchronous and are called via run_in_executor
+  so they also do not block the loop.
+• Function calling replaces Anthropic tool_use:
+    - Gemini returns function_call Parts in the candidate content.
+    - Function responses go back as Part.from_function_response().
+• System instruction moves from messages list into GenerateContentConfig.
+• Adding a new agent: add one FunctionDeclaration to _TOOLS_DECL, handle the
+  new name in _dispatch_tool, drop the agent module in /agents.
+"""
+from __future__ import annotations
+
 import asyncio
 from typing import Callable, Awaitable
-import anthropic
-from config import ANTHROPIC_API_KEY, MODEL
+
+from google import genai
+from google.genai import types
+
+from config import GOOGLE_API_KEY, GEMINI_MODEL
 from agents import web_agent, email_agent
 
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_client: genai.Client | None = None
 
-# To add a new agent: add its tool here, handle it in _dispatch_tool, and drop its
-# module in /agents. Nothing else needs changing.
-_TOOLS = [
-    {
-        "name": "delegate_to_web_agent",
-        "description": (
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=GOOGLE_API_KEY)
+    return _client
+
+
+# ── Tool declarations ──────────────────────────────────────────────────────────
+
+_TOOLS_DECL = [
+    types.FunctionDeclaration(
+        name="delegate_to_web_agent",
+        description=(
             "Delegate a research or information-retrieval task to the Web Agent. "
             "Use when the user needs current information, news, facts, or any web content."
         ),
-        "input_schema": {
+        parameters={
             "type": "object",
             "properties": {
                 "task": {
@@ -26,14 +52,14 @@ _TOOLS = [
             },
             "required": ["task"],
         },
-    },
-    {
-        "name": "delegate_to_email_agent",
-        "description": (
+    ),
+    types.FunctionDeclaration(
+        name="delegate_to_email_agent",
+        description=(
             "Delegate email drafting to the Email Agent. The agent will compose a draft "
             "and return it for user approval — the email is NOT sent automatically."
         ),
-        "input_schema": {
+        parameters={
             "type": "object",
             "properties": {
                 "task": {
@@ -46,109 +72,123 @@ _TOOLS = [
             },
             "required": ["task"],
         },
-    },
+    ),
 ]
 
-_SYSTEM = """You are Axolotl, a powerful AI orchestrator. You coordinate specialised agents \
-to accomplish complex tasks.
+_SYSTEM = (
+    "You are Axolotl, a powerful AI orchestrator. You coordinate specialised agents "
+    "to accomplish complex tasks.\n\n"
+    "Your agents:\n"
+    "  • Web Agent   — real-time web search and page reading\n"
+    "  • Email Agent — professional email composition (requires user approval before sending)\n\n"
+    "How to work:\n"
+    "1. Analyse what the user needs.\n"
+    "2. Delegate to the right agent(s) in the right order "
+    "(e.g., research first, then email).\n"
+    "3. Provide a brief status line before each delegation "
+    "(\"Searching the web for…\").\n"
+    "4. Synthesise a clear, friendly final answer once you have all results.\n\n"
+    "Tone: confident, concise, like a capable personal assistant."
+)
 
-Your agents:
-  • Web Agent  — real-time web search and page reading
-  • Email Agent — professional email composition (requires user approval before sending)
-
-How to work:
-1. Analyse what the user needs.
-2. Delegate to the right agent(s) in the right order (e.g., research first, then email).
-3. Provide a brief status line before each delegation ("Searching the web for…").
-4. Synthesise a clear, friendly final answer once you have all results.
-
-Tone: confident, concise, like a capable personal assistant."""
+_GEMINI_CONFIG = types.GenerateContentConfig(
+    system_instruction=_SYSTEM,
+    tools=[types.Tool(function_declarations=_TOOLS_DECL)],
+)
 
 Emitter = Callable[[dict], Awaitable[None]]
 
 
+# ── Main loop ──────────────────────────────────────────────────────────────────
+
 async def run(user_message: str, emit: Emitter) -> None:
     """
-    Drive the full orchestration loop, streaming SSE events via emit().
+    Drive the orchestration loop, streaming SSE events via emit().
 
     Event shapes
     ────────────
     {"type": "agent_start",  "agent": str, "message": str}
     {"type": "agent_step",   "agent": str, "message": str}
     {"type": "agent_result", "agent": str, "message": str}
-    {"type": "email_draft",  "draft": {to,subject,body}, "draft_id": str}
-    {"type": "token",        "agent": "orchestrator",    "text": str}
+    {"type": "email_draft",  "draft": {to, subject, body}, "draft_id": str}
+    {"type": "token",        "agent": "orchestrator",      "text": str}
     {"type": "done",         "result": str}
     {"type": "error",        "message": str}
     """
-    messages: list[dict] = [{"role": "user", "content": user_message}]
+    contents: list = [
+        types.Content(role="user", parts=[types.Part.from_text(user_message)])
+    ]
     loop = asyncio.get_running_loop()
 
-    await emit(
-        {
-            "type": "agent_start",
-            "agent": "orchestrator",
-            "message": "Axolotl is analysing your request…",
-        }
-    )
+    await emit({
+        "type": "agent_start",
+        "agent": "orchestrator",
+        "message": "Axolotl is analysing your request…",
+    })
 
-    while True:
-        response = _client.messages.create(
-            model=MODEL,
-            max_tokens=4096,
-            system=_SYSTEM,
-            tools=_TOOLS,
-            messages=messages,
+    for _guard in range(20):  # hard cap on orchestration rounds
+        response = await _get_client().aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=_GEMINI_CONFIG,
         )
 
-        messages.append({"role": "assistant", "content": response.content})
+        candidate = response.candidates[0]
+        contents.append(candidate.content)
 
-        # Stream any narrative text the orchestrator produced
-        for block in response.content:
-            if hasattr(block, "text") and block.text:
-                await emit({"type": "token", "agent": "orchestrator", "text": block.text})
+        # Emit any narrative text the orchestrator produced
+        for part in candidate.content.parts:
+            if hasattr(part, "text") and part.text:
+                await emit({"type": "token", "agent": "orchestrator", "text": part.text})
 
-        if response.stop_reason == "end_turn":
+        # Collect function calls
+        fn_calls = [p.function_call for p in candidate.content.parts if p.function_call]
+
+        if not fn_calls:
+            # No more tool use — synthesise final answer
             final = " ".join(
-                b.text for b in response.content if hasattr(b, "text")
+                p.text for p in candidate.content.parts
+                if hasattr(p, "text") and p.text
             ).strip()
             await emit({"type": "done", "result": final})
             return
 
-        if response.stop_reason == "tool_use":
-            tool_results = []
-
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-
-                task = block.input.get("task", "")
-                result_content = await _dispatch_tool(
-                    block.name, task, block.id, emit, loop
+        # Dispatch each function call and collect responses
+        fn_response_parts: list[types.Part] = []
+        for fc in fn_calls:
+            task = dict(fc.args).get("task", "")
+            result_str = await _dispatch_tool(fc.name, task, emit, loop)
+            fn_response_parts.append(
+                types.Part.from_function_response(
+                    name=fc.name,
+                    response={"result": result_str},
                 )
-                tool_results.append(result_content)
+            )
 
-            messages.append({"role": "user", "content": tool_results})
+        contents.append(types.Content(role="user", parts=fn_response_parts))
 
+    await emit({"type": "error", "message": "Orchestrator: maximum rounds reached."})
+
+
+# ── Tool dispatcher ────────────────────────────────────────────────────────────
 
 async def _dispatch_tool(
     tool_name: str,
     task: str,
-    tool_use_id: str,
     emit: Emitter,
     loop: asyncio.AbstractEventLoop,
-) -> dict:
-    """Run a sub-agent and return the tool_result block for the orchestrator."""
+) -> str:
+    """Run a sub-agent and return its string result for the function response."""
 
     if tool_name == "delegate_to_web_agent":
-        await emit(
-            {"type": "agent_start", "agent": "web", "message": f"Web Agent: {task[:120]}"}
-        )
-
-        steps: list[str] = []
+        await emit({
+            "type": "agent_start",
+            "agent": "web",
+            "message": f"Web Agent: {task[:120]}",
+        })
 
         def on_web_step(step: str) -> None:
-            # Called from worker thread — schedule the emit coroutine on the event loop
+            # Called from worker thread — safely schedule the coroutine
             asyncio.run_coroutine_threadsafe(
                 emit({"type": "agent_step", "agent": "web", "message": step}),
                 loop,
@@ -158,19 +198,19 @@ async def _dispatch_tool(
             None, lambda: web_agent.run(task, on_web_step)
         )
 
-        await emit(
-            {
-                "type": "agent_result",
-                "agent": "web",
-                "message": f"Web Agent finished. {result[:120]}…",
-            }
-        )
-        return {"type": "tool_result", "tool_use_id": tool_use_id, "content": result}
+        await emit({
+            "type": "agent_result",
+            "agent": "web",
+            "message": f"Web Agent finished. {result[:120]}…",
+        })
+        return result
 
     if tool_name == "delegate_to_email_agent":
-        await emit(
-            {"type": "agent_start", "agent": "email", "message": "Email Agent: composing draft…"}
-        )
+        await emit({
+            "type": "agent_start",
+            "agent": "email",
+            "message": "Email Agent: composing draft…",
+        })
 
         def on_email_step(step: str) -> None:
             asyncio.run_coroutine_threadsafe(
@@ -182,8 +222,7 @@ async def _dispatch_tool(
             None, lambda: email_agent.run(task, on_email_step)
         )
 
-        # Emit the draft for the frontend to render a confirmation UI.
-        # The draft_id is assigned by main.py when it persists the draft.
+        # The draft_id is stamped by main.py when it persists the draft
         await emit({"type": "email_draft", "draft": draft})
 
         summary = (
@@ -191,15 +230,6 @@ async def _dispatch_tool(
             f"subject: '{draft.get('subject', '?')}'. Awaiting user approval."
         )
         await emit({"type": "agent_result", "agent": "email", "message": summary})
+        return summary
 
-        return {
-            "type": "tool_result",
-            "tool_use_id": tool_use_id,
-            "content": summary,
-        }
-
-    return {
-        "type": "tool_result",
-        "tool_use_id": tool_use_id,
-        "content": f"Unknown tool: {tool_name}",
-    }
+    return f"Unknown tool: {tool_name}"

@@ -1,46 +1,72 @@
+"""Web tools — search_web and fetch_page.
+
+Tool schemas are defined in Gemini FunctionDeclaration format.
+The dispatch() function is format-agnostic (name + dict of args → str result).
+"""
 import httpx
 from bs4 import BeautifulSoup
+from google.genai import types
 from tavily import TavilyClient
+
 from config import TAVILY_API_KEY
 
-_tavily = TavilyClient(api_key=TAVILY_API_KEY)
+# Lazy init so the module can be imported without a key set (e.g. for testing).
+_tavily: TavilyClient | None = None
 
-# Tool schemas for the Anthropic API
-TOOLS = [
-    {
-        "name": "search_web",
-        "description": (
-            "Search the web for up-to-date information on any topic. "
-            "Returns titles, URLs, and content summaries from top results."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "The search query"}
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "fetch_page",
-        "description": (
-            "Fetch the full readable text content of a specific webpage URL. "
-            "Use when you need more detail than the search snippet provides."
-            # Playwright could replace httpx here for JavaScript-heavy pages.
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "The URL to fetch"}
-            },
-            "required": ["url"],
-        },
-    },
-]
+def _get_tavily() -> TavilyClient:
+    global _tavily
+    if _tavily is None:
+        _tavily = TavilyClient(api_key=TAVILY_API_KEY)
+    return _tavily
 
+# ── Gemini tool declaration ────────────────────────────────────────────────────
+# parameters uses JSON-Schema format (same as OpenAPI); the SDK converts internally.
+
+GEMINI_TOOL = types.Tool(
+    function_declarations=[
+        types.FunctionDeclaration(
+            name="search_web",
+            description=(
+                "Search the web for up-to-date information on any topic. "
+                "Returns titles, URLs, and content summaries from top results."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query",
+                    }
+                },
+                "required": ["query"],
+            },
+        ),
+        types.FunctionDeclaration(
+            name="fetch_page",
+            description=(
+                "Fetch the full readable text content of a specific webpage URL. "
+                "Use when you need more detail than the search snippet provides. "
+                # Playwright could replace httpx here for JavaScript-heavy pages.
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch",
+                    }
+                },
+                "required": ["url"],
+            },
+        ),
+    ]
+)
+
+
+# ── Implementations ────────────────────────────────────────────────────────────
 
 def search_web(query: str) -> str:
-    results = _tavily.search(query=query, max_results=5)
+    results = _get_tavily().search(query=query, max_results=5)
     items = []
     for r in results.get("results", []):
         items.append(f"**{r['title']}**\nURL: {r['url']}\n{r['content']}")
