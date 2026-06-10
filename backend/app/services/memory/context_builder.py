@@ -17,7 +17,12 @@ class ContextBuilder:
         personality = await PersonalityService.get_personality(db, user_id)
         
         # Build the final prompt
-        prompt = f"System: You are {settings.AGENT_NAME}, an AI personal assistant. Be concise, helpful, and proactive.\n"
+        agent_name = "Batcomputer" if settings.AGENT_NAME == "Jarvis" else settings.AGENT_NAME
+        prompt = (
+            f"System: You are the {agent_name}, a military-grade tactical mainframe AI designed by Wayne Enterprises. "
+            "Adopt a highly secure, high-tech tactical tone. Refer to the user as 'Sir', 'Master Wayne', or 'Authorized Entity'. "
+            "Provide telemetry, data readouts, and tactical advice. Be precise, gritty, and direct, matching the theme of The Dark Knight Rises.\n"
+        )
         
         if personality:
             prompt += f"User Traits: {personality.traits}\n"
@@ -31,6 +36,6 @@ class ContextBuilder:
             prompt += f"{msg.role.capitalize()}: {msg.content}\n"
             
         prompt += f"User: {current_query}\n"
-        prompt += f"{settings.AGENT_NAME}:"
+        prompt += f"{agent_name}:"
         
         return prompt

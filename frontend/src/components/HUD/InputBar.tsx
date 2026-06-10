@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mic, Terminal, Zap } from 'lucide-react';
+import { Send, Mic, Terminal, Zap, Shield } from 'lucide-react';
 import { useSSE } from '../../hooks/useSSE';
 import { useStore } from '../../store/useStore';
 import { motion } from 'framer-motion';
@@ -25,58 +25,60 @@ const InputBar: React.FC = () => {
   };
 
   return (
-    <div className="p-6 pt-0 relative z-20">
+    <div className="p-6 pt-0 relative z-20 bg-[#050507]">
       <form 
         onSubmit={handleSubmit}
-        className="glass rounded-sm p-1.5 flex items-center gap-2 border-[#2a2d33] focus-within:border-[#4a9eff]/50 transition-all bg-[#0a0c10]/90"
+        className="glass rounded-sm p-1.5 flex items-center gap-2 border-[#22170d]/50 focus-within:border-[#ea580c]/60 focus-within:shadow-[0_0_15px_rgba(234,88,12,0.15)] transition-all bg-[#0a0808]/90"
       >
-        <div className="pl-3 text-[#4a9eff]/40">
-          <Terminal size={16} />
+        <div className="pl-3 text-[#ea580c]/40 focus-within:text-[#ea580c]">
+          <Terminal size={15} />
         </div>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="ENTER_INSTRUCTION..."
-          className="flex-1 bg-transparent border-none outline-none text-[#e0e0e0] font-mono text-sm py-2 placeholder:text-[#3a3f4a] tracking-wider"
+          placeholder="ENTER_TACTICAL_COMMAND..."
+          className="flex-1 bg-transparent border-none outline-none text-[#e5e5e7] font-mono text-[13px] py-2 placeholder:text-[#4a4747] tracking-wider focus:ring-0 focus:outline-none"
           disabled={isStreaming}
         />
         <div className="flex items-center gap-2 pr-2">
           {isStreaming && (
             <motion.div 
               animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              className="flex items-center gap-1 text-[#4a9eff] text-[10px] font-mono uppercase tracking-tighter pr-2"
+              transition={{ repeat: Infinity, duration: 1.2 }}
+              className="flex items-center gap-1.5 text-[#ea580c] text-[9.5px] font-mono uppercase tracking-widest pr-2 font-bold"
             >
-              <Zap size={10} /> Transmitting...
+              <Zap size={10} className="animate-bounce" /> Uplink Transmitting...
             </motion.div>
           )}
           <button
             type="button"
-            className="p-2 text-[#8a8d91] hover:text-[#4a9eff] transition-colors"
+            title="Audio Input Protocol"
+            className="p-2 text-[#8a8d91] hover:text-[#ea580c] transition-colors cursor-pointer"
             disabled={isStreaming}
           >
-            <Mic size={18} />
+            <Mic size={16} />
           </button>
           <button
             type="submit"
-            className={`p-2 rounded-sm transition-all border ${
+            title="Execute Command"
+            className={`p-2.5 rounded-sm transition-all border cursor-pointer ${
               input.trim() && !isStreaming 
-                ? 'bg-[#1e3a5f]/30 border-[#4a9eff]/30 text-[#4a9eff] hover:bg-[#1e3a5f]/50' 
-                : 'border-transparent text-[#2a2d33]'
+                ? 'bg-[#ea580c]/15 border-[#ea580c]/35 text-[#ea580c] hover:bg-[#ea580c]/30 hover:text-white' 
+                : 'border-transparent text-[#221c17]'
             }`}
             disabled={!input.trim() || isStreaming}
           >
-            <Send size={18} />
+            <Send size={15} />
           </button>
         </div>
       </form>
       <div className="mt-3 flex justify-between items-center px-1">
-        <div className="text-[9px] font-mono text-[#4a9eff]/40 uppercase tracking-[0.3em]">
-          UPLINK_STATUS: OPTIMAL
+        <div className="text-[8.5px] font-mono text-[#ea580c]/45 uppercase tracking-[0.3em] flex items-center gap-1">
+          <Shield size={10} /> BAT-NET_LINK: SECURE_CAVE_SERVER_v9.42
         </div>
-        <div className="text-[9px] font-mono text-[#8a8d91] uppercase tracking-[0.1em]">
-          SECURE_ENCRYPTION_LAYER_v4.2.0
+        <div className="text-[8.5px] font-mono text-[#6b6d72] uppercase tracking-[0.15em]">
+          CIPHER: AES_MIL_256_GCM
         </div>
       </div>
     </div>

@@ -18,12 +18,13 @@ const GlassContainer: React.FC<GlassContainerProps> = ({ children, className = '
         damping: 20,
         delay 
       }}
-      className={`glass rounded-sm overflow-hidden ${className}`}
+      className={`glass rounded-sm overflow-hidden border-[#ea580c]/15 ${className}`}
     >
-      <div className="absolute top-0 left-0 w-1 h-1 border-t border-l border-white/20" />
-      <div className="absolute top-0 right-0 w-1 h-1 border-t border-r border-white/20" />
-      <div className="absolute bottom-0 left-0 w-1 h-1 border-b border-l border-white/20" />
-      <div className="absolute bottom-0 right-0 w-1 h-1 border-b border-r border-white/20" />
+      {/* Nolan-themed amber corners */}
+      <div className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-[#ea580c]/40" />
+      <div className="absolute top-0 right-0 w-1.5 h-1.5 border-t border-r border-[#ea580c]/40" />
+      <div className="absolute bottom-0 left-0 w-1.5 h-1.5 border-b border-l border-[#ea580c]/40" />
+      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-[#ea580c]/40" />
       {children}
     </motion.div>
   );

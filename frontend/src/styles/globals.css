@@ -1,13 +1,15 @@
+@import "tailwindcss";
+
 :root {
-  --bg-dark: #050505;
-  --bg-secondary: #0f1115;
-  --border-industrial: #2a2d33;
-  --accent-blue: #1e3a5f;
-  --accent-glow: #4a9eff;
-  --text-primary: #e0e0e0;
+  --bg-dark: #030305;
+  --bg-secondary: #0a0707;
+  --border-industrial: #2c1b0e;
+  --accent-blue: #1c0e05;
+  --accent-glow: #ea580c;
+  --text-primary: #e5e5e7;
   --text-secondary: #8a8d91;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --glass-blur: blur(8px);
+  --glass-blur: blur(10px);
 }
 
 * {
@@ -35,8 +37,8 @@ body {
   height: 100vh;
   width: 100vw;
   background: 
-    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
-    linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03)),
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%),
+    linear-gradient(90deg, rgba(234, 88, 12, 0.01), rgba(0, 0, 0, 0.05), rgba(234, 88, 12, 0.01)),
     var(--bg-dark);
   background-size: 100% 4px, 3px 100%, 100% 100%;
   display: flex;
@@ -46,11 +48,11 @@ body {
 
 /* Industrial Border & Glass */
 .glass {
-  background: rgba(15, 17, 21, 0.85);
+  background: rgba(8, 7, 7, 0.88);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-industrial);
-  box-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.8);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.95);
   position: relative;
 }
 
@@ -69,11 +71,11 @@ body {
   width: 100%;
   height: 100px;
   z-index: 999;
-  background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(0, 0, 0, 0) 100%);
-  opacity: 0.1;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(234, 88, 12, 0.015) 50%, rgba(0, 0, 0, 0) 100%);
+  opacity: 0.15;
   position: absolute;
   bottom: 100%;
-  animation: scanline 8s linear infinite;
+  animation: scanline 12s linear infinite;
 }
 
 @keyframes scanline {
@@ -82,11 +84,40 @@ body {
 }
 
 .glow-text {
-  text-shadow: 0 0 10px rgba(74, 158, 255, 0.4);
+  text-shadow: 0 0 10px rgba(234, 88, 12, 0.55);
 }
 
 .industrial-grid {
   background-image: radial-gradient(var(--border-industrial) 1px, transparent 1px);
-  background-size: 40px 40px;
-  opacity: 0.1;
+  background-size: 30px 30px;
+  opacity: 0.2;
+}
+
+/* Custom Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(234, 88, 12, 0.35);
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(234, 88, 12, 0.65);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
 }
