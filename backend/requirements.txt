@@ -2,6 +2,7 @@ fastapi[all]
 uvicorn
 sqlalchemy[asyncio]
 asyncpg
+psycopg2-binary
 pydantic-settings
 python-dotenv
 google-generativeai
