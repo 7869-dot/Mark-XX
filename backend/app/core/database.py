@@ -9,6 +9,9 @@ if database_url.startswith("postgres://"):
 elif database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
     database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+# Debug print (obscured) to verify the protocol in Render logs
+print(f"INFO: Connecting to database using protocol: {database_url.split('://')[0]}")
+
 engine = create_async_engine(
     database_url,
     pool_pre_ping=True,
