@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { useSSE } from '../../hooks/useSSE';
 import { 
   User, Activity, Database, Brain, Shield, Zap, 
-  Radar, Radio, ShieldAlert, Key, Map, Crosshair, Wrench, Flame
+  Radar, Radio, Map, Crosshair, Wrench, Flame
 } from 'lucide-react';
 import GlassContainer from './GlassContainer';
 import { motion, AnimatePresence } from 'framer-motion';

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useStore } from '../../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal, Cpu, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Cpu, ShieldCheck } from 'lucide-react';
 
 const ChatWindow: React.FC = () => {
   const { messages, isStreaming } = useStore();

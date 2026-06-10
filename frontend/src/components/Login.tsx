@@ -3,7 +3,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import axios from 'axios';
 import { useStore } from '../store/useStore';
 import { motion } from 'framer-motion';
-import { Shield, Lock, Terminal, Key, Loader, Zap } from 'lucide-react';
+import { Lock, Terminal, Key, Loader, Zap } from 'lucide-react';
 
 const Login: React.FC = () => {
   const { setToken } = useStore();
