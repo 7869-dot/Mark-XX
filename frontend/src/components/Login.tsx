@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { Shield } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const { setToken, setUser } = useStore();
+  const { setToken } = useStore();
 
   const handleSuccess = async (credentialResponse: any) => {
     try {
