@@ -1,69 +1,94 @@
 import React from 'react';
 import { useStore } from '../../store/useStore';
-import { User, Activity, Database, Brain } from 'lucide-react';
+import { User, Activity, Database, Brain, Shield, Zap } from 'lucide-react';
 import GlassContainer from './GlassContainer';
 
 const Sidebar: React.FC = () => {
   const { user, personality, summary } = useStore();
 
   return (
-    <div className="w-80 h-full p-4 flex flex-col gap-4">
-      {/* User Profile */}
-      <GlassContainer className="p-4" delay={0.1}>
+    <div className="w-80 h-full p-4 flex flex-col gap-4 border-r border-[#2a2d33] bg-[#050505]/40 backdrop-blur-sm relative z-20">
+      {/* User Profile / Auth Status */}
+      <GlassContainer className="p-4 bg-[#0a0c10]/80" delay={0.1}>
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="User" className="w-full h-full rounded-full" />
-            ) : (
-              <User size={24} className="text-blue-400" />
-            )}
+          <div className="relative">
+            <div className="w-12 h-12 rounded-sm bg-[#1e3a5f]/20 flex items-center justify-center border border-[#4a9eff]/30 overflow-hidden">
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt="User" className="w-full h-full object-cover" />
+              ) : (
+                <User size={24} className="text-[#4a9eff]" />
+              )}
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-[#050505] rounded-full" />
           </div>
           <div>
-            <div className="text-sm font-bold text-blue-400 uppercase tracking-tighter">Authorized User</div>
-            <div className="text-lg font-mono truncate">{user?.full_name || 'Anonymous'}</div>
+            <div className="text-[10px] font-mono text-[#4a9eff] uppercase tracking-wider glow-text flex items-center gap-1">
+              <Shield size={10} /> Authorized_Access
+            </div>
+            <div className="text-md font-mono truncate text-[#e0e0e0] uppercase tracking-tighter">
+              {user?.full_name || 'Anonymous_Entity'}
+            </div>
           </div>
         </div>
       </GlassContainer>
 
-      {/* Personality Layer */}
-      <GlassContainer className="p-4 flex-1" delay={0.2}>
-        <div className="flex items-center gap-2 mb-4 text-blue-400">
-          <Brain size={18} />
-          <span className="text-sm font-bold uppercase tracking-widest">User Personality</span>
+      {/* Intelligence Profile */}
+      <GlassContainer className="p-4 flex-1 flex flex-col bg-[#0a0c10]/80" delay={0.2}>
+        <div className="flex items-center justify-between mb-4 border-b border-[#2a2d33] pb-2">
+          <div className="flex items-center gap-2 text-[#4a9eff]">
+            <Brain size={16} />
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">INTEL_PROFILE</span>
+          </div>
+          <Zap size={14} className="text-[#4a9eff] animate-pulse" />
         </div>
-        <div className="space-y-4 font-mono text-xs overflow-y-auto max-h-[30vh]">
+        <div className="space-y-4 font-mono text-[11px] overflow-y-auto pr-2 custom-scrollbar">
           {personality?.traits ? (
             Object.entries(personality.traits).map(([key, val]) => (
-              <div key={key} className="border-l-2 border-blue-500/30 pl-2">
-                <div className="text-blue-300 opacity-70 uppercase">{key}</div>
-                <div className="text-white">{String(val)}</div>
+              <div key={key} className="group">
+                <div className="text-[#8a8d91] uppercase text-[9px] mb-1 flex justify-between">
+                  <span>{key}</span>
+                  <span className="text-[#4a9eff]/40">v.2.4</span>
+                </div>
+                <div className="text-[#e0e0e0] bg-[#1e3a5f]/10 p-2 border-l border-[#4a9eff]/30 group-hover:bg-[#1e3a5f]/20 transition-colors">
+                  {String(val)}
+                </div>
               </div>
             ))
           ) : (
-            <div className="text-slate-500 italic">Analyzing behavior...</div>
+            <div className="text-[#8a8d91] italic animate-pulse">Scanning behavioral patterns...</div>
           )}
         </div>
       </GlassContainer>
 
-      {/* Memory Summary */}
-      <GlassContainer className="p-4 flex-1" delay={0.3}>
-        <div className="flex items-center gap-2 mb-4 text-cyan-400">
-          <Database size={18} />
-          <span className="text-sm font-bold uppercase tracking-widest">Global Memory</span>
+      {/* Cryptic Memory Feed */}
+      <GlassContainer className="p-4 h-48 bg-[#0a0c10]/80" delay={0.3}>
+        <div className="flex items-center gap-2 mb-3 text-[#4a9eff]/80 border-b border-[#2a2d33] pb-2">
+          <Database size={14} />
+          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">GLOBAL_MEMORY</span>
         </div>
-        <div className="text-xs font-mono text-slate-300 leading-relaxed overflow-y-auto max-h-[30vh]">
-          {summary || 'No conversation summary available. Jarvis is awaiting data input.'}
+        <div className="text-[10px] font-mono text-[#8a8d91] leading-relaxed overflow-y-auto h-32 custom-scrollbar">
+          {summary ? (
+            <span className="opacity-80">{summary}</span>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="h-2 w-full bg-[#1e3a5f]/20 animate-pulse rounded-full" />
+              <div className="h-2 w-2/3 bg-[#1e3a5f]/20 animate-pulse rounded-full" />
+              <div className="h-2 w-5/6 bg-[#1e3a5f]/20 animate-pulse rounded-full" />
+            </div>
+          )}
         </div>
       </GlassContainer>
 
-      {/* System Status */}
-      <GlassContainer className="p-4" delay={0.4}>
+      {/* Hardware Status */}
+      <GlassContainer className="p-3 bg-[#0a0c10]/90 border-[#4a9eff]/20" delay={0.4}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-green-400">
-            <Activity size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">System Online</span>
+          <div className="flex items-center gap-2 text-green-500/80">
+            <Activity size={14} />
+            <span className="text-[9px] font-mono font-bold uppercase tracking-widest">UPLINK_STABLE</span>
           </div>
-          <div className="text-[10px] font-mono text-slate-500">v0.1.0-alpha</div>
+          <div className="text-[9px] font-mono text-[#8a8d91]">
+            <span className="text-[#4a9eff]/50">REV_</span>0.1.0-DARK
+          </div>
         </div>
       </GlassContainer>
     </div>

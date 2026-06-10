@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Environments and secret variables
+.env
+.env.*
+.venv/
+venv/
+ENV/
+env/
+
+# Node.js dependency directories and build output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+
+# Logs and databases
+*.log
+*.sqlite3
+*.sqlite3-journal
+
+# OS / Editor files
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

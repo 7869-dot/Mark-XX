@@ -1,14 +1,13 @@
 :root {
-  --bg-dark: #0a0c10;
-  --bg-darker: #050608;
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-blur: blur(12px);
-  --accent-blue: #00d2ff;
-  --accent-cyan: #3a7bd5;
-  --text-primary: #e0e6ed;
-  --text-secondary: #94a3b8;
+  --bg-dark: #050505;
+  --bg-secondary: #0f1115;
+  --border-industrial: #2a2d33;
+  --accent-blue: #1e3a5f;
+  --accent-glow: #4a9eff;
+  --text-primary: #e0e0e0;
+  --text-secondary: #8a8d91;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --glass-blur: blur(8px);
 }
 
 * {
@@ -20,7 +19,7 @@
 body {
   background-color: var(--bg-dark);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
   height: 100vh;
   width: 100vw;
@@ -35,21 +34,59 @@ body {
   position: relative;
   height: 100vh;
   width: 100vw;
-  background: radial-gradient(circle at center, #1a1f26 0%, #0a0c10 100%);
+  background: 
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03)),
+    var(--bg-dark);
+  background-size: 100% 4px, 3px 100%, 100% 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* Glassmorphism utility */
+/* Industrial Border & Glass */
 .glass {
-  background: var(--glass-bg);
+  background: rgba(15, 17, 21, 0.85);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border: 1px solid var(--border-industrial);
+  box-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.8);
+  position: relative;
+}
+
+.glass::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-industrial), transparent);
+}
+
+/* Scanline Effect */
+.scanline {
+  width: 100%;
+  height: 100px;
+  z-index: 999;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(255, 255, 255, 0.02) 50%, rgba(0, 0, 0, 0) 100%);
+  opacity: 0.1;
+  position: absolute;
+  bottom: 100%;
+  animation: scanline 8s linear infinite;
+}
+
+@keyframes scanline {
+  0% { bottom: 100%; }
+  100% { bottom: -100px; }
 }
 
 .glow-text {
-  text-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+  text-shadow: 0 0 10px rgba(74, 158, 255, 0.4);
+}
+
+.industrial-grid {
+  background-image: radial-gradient(var(--border-industrial) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.1;
 }
