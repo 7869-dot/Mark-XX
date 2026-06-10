@@ -25,8 +25,8 @@ class Settings(BaseSettings):
 
     # Jarvis Configuration
     AGENT_NAME: str = "Jarvis"
-    ORCHESTRATOR_MODEL: str = "gemini-1.5-pro"
-    SUBAGENT_MODEL: str = "gemini-1.5-flash"
+    ORCHESTRATOR_MODEL: str = "gemini-2.5-flash"
+    SUBAGENT_MODEL: str = "gemini-2.5-flash-lite"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
