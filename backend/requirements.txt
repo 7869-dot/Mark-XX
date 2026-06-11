@@ -1,9 +1,9 @@
 fastapi[all]>=0.115.6
-uvicorn
-sqlalchemy[asyncio]
+uvicorn[standard]>=0.34.0
+sqlalchemy[asyncio]>=2.0.36
 asyncpg
 psycopg[binary]
-pydantic-settings
+pydantic-settings>=2.7.0
 python-dotenv
 google-genai
 google-auth
