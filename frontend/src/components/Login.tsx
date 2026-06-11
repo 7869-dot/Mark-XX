@@ -14,7 +14,7 @@ const Login: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await axios.post(`${backendUrl}/auth/google`, {
         credential: credentialResponse.credential
       });
@@ -33,7 +33,7 @@ const Login: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await axios.post(`${backendUrl}/auth/guest`);
       
       const { access_token } = response.data;

@@ -15,7 +15,7 @@ export const useSSE = () => {
     addMessage({ role: 'assistant', content: '' });
     setIsStreaming(true);
 
-    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const url = `${backendUrl}/chat/stream?query=${encodeURIComponent(query)}`;
     
     // Note: EventSource doesn't support custom headers directly. 

@@ -36,7 +36,9 @@ app.add_middleware(
     allow_origins=[
         "https://axolot.vercel.app",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -44,9 +46,9 @@ app.add_middleware(
 )
 
 # Include Routers
-app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
-app.include_router(chat.router, prefix=f"{settings.API_V1_STR}/chat", tags=["Chat"])
-app.include_router(memory.router, prefix=f"{settings.API_V1_STR}/memory", tags=["Memory"])
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(chat.router, prefix="/chat", tags=["Chat"])
+app.include_router(memory.router, prefix="/memory", tags=["Memory"])
 
 @app.get("/")
 async def root():

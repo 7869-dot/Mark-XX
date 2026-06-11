@@ -12,7 +12,7 @@ from app.schemas.schemas import Token, TokenData, UserCreate, User as UserSchema
 import logging
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 async def get_current_user(
     request: Request,

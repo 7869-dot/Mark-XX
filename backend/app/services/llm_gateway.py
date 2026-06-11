@@ -1,19 +1,24 @@
-import google.generativeai as genai
+from google import genai
 from app.core.config import settings
 from typing import AsyncGenerator, List, Dict, Any
 
 class LLMService:
     def __init__(self, model_name: str = settings.ORCHESTRATOR_MODEL):
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(model_name)
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.model_name = model_name
 
     async def generate_response(self, prompt: str) -> str:
-        response = await self.model.generate_content_async(prompt)
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=prompt
+        )
         return response.text
 
     async def stream_response(self, prompt: str) -> AsyncGenerator[str, None]:
-        response = await self.model.generate_content_async(prompt, stream=True)
-        async for chunk in response:
+        async for chunk in self.client.aio.models.generate_content_stream(
+            model=self.model_name,
+            contents=prompt
+        ):
             if chunk.text:
                 yield chunk.text
 
